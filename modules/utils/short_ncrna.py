@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import math
 import sqlite3
 import threading
@@ -12,6 +13,7 @@ import numpy as np
 
 import pyrion
 from pyrion import TwoBitAccessor
+from pyrion.core.nucleotide_sequences import NucleotideSequence
 
 
 @dataclass(frozen=True)
@@ -39,8 +41,8 @@ def _strand_to_int(strand: str) -> int:
     raise ValueError(f"Unsupported strand: {strand}")
 
 
-def _load_transcript_regions(bed12_path: str) -> Dict[str, Tuple[str, int]]:
-    regions: Dict[str, Tuple[str, int]] = {}
+def _load_transcript_regions(bed12_path: str) -> Dict[str, Tuple[str, int, int]]:
+    regions: Dict[str, Tuple[str, int, int]] = {}
     with open(bed12_path, "r") as f:
         for line in f:
             if not line.strip() or line.startswith("#"):
@@ -53,7 +55,16 @@ def _load_transcript_regions(bed12_path: str) -> Dict[str, Tuple[str, int]]:
             end = int(parts[2])
             transcript_id = parts[3]
             strand = _strand_to_int(parts[5])
-            regions[transcript_id] = (f"{chrom}:{start}-{end}", strand)
+            exon_count = 1
+            if len(parts) >= 10:
+                try:
+                    exon_count = int(parts[9])
+                except ValueError:
+                    exon_count = 1
+                    if len(parts) >= 12:
+                        block_sizes = [s for s in parts[10].split(",") if s]
+                        exon_count = len(block_sizes) or 1
+            regions[transcript_id] = (f"{chrom}:{start}-{end}", strand, exon_count)
     return regions
 
 
@@ -66,6 +77,7 @@ def write_short_ncrna_joblist(
     transcript_regions = _load_transcript_regions(ultimate_bed_path)
 
     kept = 0
+    total = 0
     with open(rna_orthologous_regions_path, "r") as src, open(out_path, "w") as dst:
         header = src.readline().rstrip("\n").split("\t")
         try:
@@ -87,6 +99,7 @@ def write_short_ncrna_joblist(
         for line in src:
             if not line.strip():
                 continue
+            total += 1
             parts = line.rstrip("\n").split("\t")
             if len(parts) <= max(tlen_idx, cstrand_idx):
                 continue
@@ -108,7 +121,9 @@ def write_short_ncrna_joblist(
             ref_region_data = transcript_regions.get(transcript_id)
             if ref_region_data is None:
                 continue
-            transcript_region, ref_strand_from_bed = ref_region_data
+            transcript_region, ref_strand_from_bed, exon_count = ref_region_data
+            if exon_count > 1:
+                continue
             if transcript_strand not in (1, -1):
                 transcript_strand = ref_strand_from_bed
 
@@ -120,22 +135,29 @@ def write_short_ncrna_joblist(
             )
             kept += 1
 
+    print(f"# Prepared {kept} short ncRNA jobs (from {total} RNA regions).")
     return kept
 
 
 def _get_spliced_sequence(transcript, accessor: TwoBitAccessor) -> str:
-    seq_parts = [
-        str(accessor.fetch(transcript.chrom, int(b[0]), int(b[1]))).upper()
-        for b in transcript.blocks
-    ]
-    seq = "".join(seq_parts)
+    seq_obj: Optional[NucleotideSequence] = None
+    for block in transcript.blocks:
+        block_seq = accessor.fetch(transcript.chrom, int(block[0]), int(block[1]))
+        if seq_obj is None:
+            seq_obj = block_seq
+        else:
+            seq_obj = seq_obj.merge(block_seq)
+
+    if seq_obj is None:
+        return ""
 
     if transcript.strand == -1:
-        comp = {"A": "U", "T": "A", "G": "C", "C": "G", "N": "N"}
-        seq = "".join(comp.get(b, "N") for b in reversed(seq))
-    else:
-        seq = seq.replace("T", "U")
-    return seq
+        seq_obj = seq_obj.reverse_complement()
+
+    if not seq_obj.is_rna:
+        seq_obj = seq_obj.toggle_type()
+
+    return seq_obj.to_string()
 
 
 def _extract_sequence(
@@ -145,13 +167,12 @@ def _extract_sequence(
     end: int,
     strand: int,
 ) -> str:
-    seq = str(accessor.fetch(chrom, start, end)).upper()
+    seq_obj = accessor.fetch(chrom, start, end)
     if strand == -1:
-        comp = {"A": "U", "T": "A", "G": "C", "C": "G", "N": "N"}
-        seq = "".join(comp.get(b, "N") for b in reversed(seq))
-    else:
-        seq = seq.replace("T", "U")
-    return seq
+        seq_obj = seq_obj.reverse_complement()
+    if not seq_obj.is_rna:
+        seq_obj = seq_obj.toggle_type()
+    return seq_obj.to_string()
 
 
 def _add_flanks(
@@ -179,6 +200,8 @@ def _add_flanks(
 
 
 def _pairwise_sq_dists(X: np.ndarray, Y: np.ndarray) -> np.ndarray:
+    if not (np.isfinite(X).all() and np.isfinite(Y).all()):
+        return np.full((X.shape[0], Y.shape[0]), np.inf, dtype=np.float64)
     x_norm = (X ** 2).sum(axis=1)[:, None]
     y_norm = (Y ** 2).sum(axis=1)[None, :]
     dists = x_norm + y_norm - 2.0 * (X @ Y.T)
@@ -210,6 +233,48 @@ def _compute_mmd(X: np.ndarray, Y: np.ndarray) -> float:
     mmd_sq -= 2.0 * K_XY.mean()
 
     return math.sqrt(max(mmd_sq, 0.0))
+
+
+def _prepare_ref_mmd(ref_emb: np.ndarray) -> Tuple[float, float, float, int]:
+    n = ref_emb.shape[0]
+    if n < 2:
+        return 1.0, 0.0, 0.0, n
+
+    ref_dists = _pairwise_sq_dists(ref_emb, ref_emb)
+    ref_dists = np.sqrt(ref_dists)
+    median = np.median(ref_dists)
+    if median <= 0:
+        median = 1.0
+    gamma = 1.0 / (2.0 * median * median + 1e-10)
+
+    K_XX = np.exp(-gamma * (_pairwise_sq_dists(ref_emb, ref_emb)))
+    K_XX_sum = float(K_XX.sum())
+    K_XX_trace = float(np.trace(K_XX))
+    return gamma, K_XX_sum, K_XX_trace, n
+
+
+def _compute_mmd_with_ref(
+    ref_ctx: Tuple[float, float, float, int],
+    ref_emb: np.ndarray,
+    Y: np.ndarray,
+    context: Optional[Dict[str, object]] = None,
+) -> float:
+    gamma, K_XX_sum, K_XX_trace, n = ref_ctx
+    m = Y.shape[0]
+    if n < 2 or m < 2:
+        return float("inf")
+    if not np.isfinite(ref_emb).all() or not np.isfinite(Y).all():
+        if context is not None:
+            print("# Warning: non-finite embeddings before MMD", context)
+        return float("inf")
+
+    K_YY = np.exp(-gamma * (_pairwise_sq_dists(Y, Y)))
+    K_XY = np.exp(-gamma * (_pairwise_sq_dists(ref_emb, Y)))
+
+    mmd_sq = (K_XX_sum - K_XX_trace) / (n * (n - 1))
+    mmd_sq += (K_YY.sum() - np.trace(K_YY)) / (m * (m - 1))
+    mmd_sq -= 2.0 * K_XY.mean()
+    return math.sqrt(max(float(mmd_sq), 0.0))
 
 
 class GPUClient:
@@ -294,6 +359,7 @@ async def _sqlite_writer(queue: asyncio.Queue, sqlite_path: str) -> None:
     columns = {
         "transcript_id": "TEXT NOT NULL",
         "chain_id": "TEXT NOT NULL",
+        "biotype": "TEXT",
         "query_region": "TEXT",
         "query_strand": "INTEGER",
         "mmd_score": "REAL",
@@ -343,6 +409,7 @@ async def _process_short_job(
         return {
             "transcript_id": job.transcript_id,
             "chain_id": job.chain_id,
+            "biotype": job.biotype,
             "status": "missing_transcript",
         }
 
@@ -352,6 +419,7 @@ async def _process_short_job(
         return {
             "transcript_id": job.transcript_id,
             "chain_id": job.chain_id,
+            "biotype": job.biotype,
             "status": "empty_ref",
         }
 
@@ -361,6 +429,7 @@ async def _process_short_job(
         return {
             "transcript_id": job.transcript_id,
             "chain_id": job.chain_id,
+            "biotype": job.biotype,
             "status": "empty_query",
         }
 
@@ -368,6 +437,7 @@ async def _process_short_job(
         return {
             "transcript_id": job.transcript_id,
             "chain_id": job.chain_id,
+            "biotype": job.biotype,
             "status": "query_too_long",
         }
 
@@ -376,16 +446,40 @@ async def _process_short_job(
     )
 
     ref_emb = await gpu.embed(job.transcript_id + "|" + job.chain_id, "ref", ref_seq, mean_pool=False)
+    if not np.isfinite(ref_emb).all():
+        print(
+            "# Warning: non-finite ref embedding",
+            {
+                "transcript_id": job.transcript_id,
+                "chain_id": job.chain_id,
+                "biotype": job.biotype,
+                "transcript_region": job.transcript_region,
+                "transcript_strand": job.transcript_strand,
+                "query_region": job.query_region,
+                "query_strand": job.query_strand,
+                "ref_length": len(ref_seq),
+                "ref_seq": ref_seq,
+            },
+        )
+        return {
+            "transcript_id": job.transcript_id,
+            "chain_id": job.chain_id,
+            "biotype": job.biotype,
+            "status": "nan_ref_emb",
+        }
+    ref_ctx = _prepare_ref_mmd(ref_emb)
 
     best_mmd = float("inf")
     best_start = 0
     best_end = ref_length
+    any_valid_window = False
 
     query_len = len(extended_query)
     if query_len < ref_length:
         return {
             "transcript_id": job.transcript_id,
             "chain_id": job.chain_id,
+            "biotype": job.biotype,
             "status": "query_shorter_than_ref",
         }
 
@@ -394,17 +488,52 @@ async def _process_short_job(
         window_seq = extended_query[start:start + ref_length]
         window_id = f"win:{start}:{start + ref_length}"
         window_emb = await gpu.embed(job.transcript_id + "|" + job.chain_id, window_id, window_seq, mean_pool=False)
-        mmd = _compute_mmd(ref_emb, window_emb)
+        if not np.isfinite(window_emb).all():
+            print(
+                "# Warning: non-finite window embedding",
+                {
+                    "transcript_id": job.transcript_id,
+                    "chain_id": job.chain_id,
+                    "biotype": job.biotype,
+                    "window_start": start,
+                    "window_end": start + ref_length,
+                    "window_length": len(window_seq),
+                },
+            )
+            continue
+        mmd = _compute_mmd_with_ref(
+            ref_ctx,
+            ref_emb,
+            window_emb,
+            context={
+                "transcript_id": job.transcript_id,
+                "chain_id": job.chain_id,
+                "biotype": job.biotype,
+                "window_start": start,
+                "window_end": start + ref_length,
+                "window_length": len(window_seq),
+            },
+        )
+        any_valid_window = True
         if mmd < best_mmd:
             best_mmd = mmd
             best_start = start
             best_end = start + ref_length
+
+    if not any_valid_window or not np.isfinite(best_mmd):
+        return {
+            "transcript_id": job.transcript_id,
+            "chain_id": job.chain_id,
+            "biotype": job.biotype,
+            "status": "nan_windows",
+        }
 
     min_len = int(ref_length * min_length_ratio)
     max_len = int(ref_length * max_length_ratio)
 
     perturb_best_mmd = best_mmd
     perturb_best_end = best_end
+    any_valid_perturb = False
     for p in range(-perturbation_range, perturbation_range + 1):
         end = best_end + p
         if end <= best_start or end > query_len:
@@ -415,10 +544,42 @@ async def _process_short_job(
         cand_seq = extended_query[best_start:end]
         cand_id = f"end:{best_start}:{end}"
         cand_emb = await gpu.embed(job.transcript_id + "|" + job.chain_id, cand_id, cand_seq, mean_pool=False)
-        mmd = _compute_mmd(ref_emb, cand_emb)
+        if not np.isfinite(cand_emb).all():
+            print(
+                "# Warning: non-finite perturbation embedding",
+                {
+                    "transcript_id": job.transcript_id,
+                    "chain_id": job.chain_id,
+                    "biotype": job.biotype,
+                    "perturbation_end": end,
+                    "perturbation_length": len(cand_seq),
+                },
+            )
+            continue
+        mmd = _compute_mmd_with_ref(
+            ref_ctx,
+            ref_emb,
+            cand_emb,
+            context={
+                "transcript_id": job.transcript_id,
+                "chain_id": job.chain_id,
+                "biotype": job.biotype,
+                "perturbation_end": end,
+                "perturbation_length": len(cand_seq),
+            },
+        )
+        any_valid_perturb = True
         if mmd < perturb_best_mmd:
             perturb_best_mmd = mmd
             perturb_best_end = end
+
+    if not any_valid_perturb or not np.isfinite(perturb_best_mmd):
+        return {
+            "transcript_id": job.transcript_id,
+            "chain_id": job.chain_id,
+            "biotype": job.biotype,
+            "status": "nan_perturbations",
+        }
 
     if job.query_strand == 1:
         final_start = ext_start + best_start
@@ -433,6 +594,7 @@ async def _process_short_job(
     return {
         "transcript_id": job.transcript_id,
         "chain_id": job.chain_id,
+        "biotype": job.biotype,
         "query_region": final_region,
         "query_strand": job.query_strand,
         "mmd_score": float(perturb_best_mmd),
@@ -455,9 +617,13 @@ def run_short_ncrna_scheduler(
     max_length_ratio: float = 1.2,
     window_step: int = 1,
     perturbation_range: int = 5,
+    dump_tsv_path: Optional[str] = None,
 ) -> None:
     async def _run() -> None:
+        t0 = time.monotonic()
         jobs = _load_joblist(joblist_path)
+        print(f"# Loaded {len(jobs)} short ncRNA jobs.")
+        print(f"# Short ncRNA workers: {max_concurrent}")
         transcripts = pyrion.io.read_bed12_file(ultimate_bed_path)
         transcripts_by_id = {t.id: t for t in transcripts}
 
@@ -481,6 +647,9 @@ def run_short_ncrna_scheduler(
                 job = await job_queue.get()
                 if job is None:
                     break
+                if job_queue.qsize() % 200 == 0:
+                    elapsed = time.monotonic() - t0
+                    print(f"# Short ncRNA jobs remaining: {job_queue.qsize()} (elapsed {elapsed:.1f}s)")
                 try:
                     result = await _process_short_job(
                         job,
@@ -498,6 +667,7 @@ def run_short_ncrna_scheduler(
                     result = {
                         "transcript_id": job.transcript_id,
                         "chain_id": job.chain_id,
+                        "biotype": job.biotype,
                         "status": f"error:{exc}",
                     }
                 await result_queue.put(result)
@@ -507,7 +677,23 @@ def run_short_ncrna_scheduler(
 
         await result_queue.put(None)
         await writer_task
+        elapsed_total = time.monotonic() - t0
+        print(f"# Short ncRNA scheduler finished in {elapsed_total:.1f}s.")
 
+        if dump_tsv_path:
+            conn = sqlite3.connect(sqlite_path)
+            cursor = conn.execute(
+                "SELECT transcript_id, chain_id, biotype, query_region, query_strand, "
+                "mmd_score, aligned_length, status "
+                "FROM short_ncrna_results"
+            )
+            columns = [desc[0] for desc in cursor.description]
+            with open(dump_tsv_path, "w") as f:
+                f.write("\t".join(columns) + "\n")
+                for row in cursor:
+                    f.write("\t".join("" if v is None else str(v) for v in row) + "\n")
+            conn.close()
+ 
     asyncio.run(_run())
 
 

@@ -64,6 +64,7 @@ temp/
 # Pipeline outputs (users should specify their own output directories)
 output/
 results/
+sample_output/
 
 # Biomart metadata
 *.biomart
@@ -86,3 +87,17 @@ results/
 
 # Large model files
 *.ckpt
+
+# LaTeX
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.synctex.gz
+*.pdf

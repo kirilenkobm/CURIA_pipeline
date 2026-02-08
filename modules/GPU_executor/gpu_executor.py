@@ -119,6 +119,8 @@ def _collect_batch(input_queue, cfg: ExecutorConfig):
 def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = None):
     cfg = cfg or ExecutorConfig()
     device = get_device(cfg.device)
+    if device.type == "cpu":
+        print("# Warning: GPU executor running on CPU (CUDA/MPS unavailable).")
 
     model, alphabet = fm.pretrained.rna_fm_t12()
     batch_converter = alphabet.get_batch_converter()

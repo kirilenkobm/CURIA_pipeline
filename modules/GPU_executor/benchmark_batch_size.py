@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
-"""
-Benchmark reasonable batch size for RNA-FM at fixed sequence length.
-
-Notes:
-- CUDA: reports peak VRAM and suggests safe batch size.
-- MPS: no reliable peak VRAM; uses success/latency only.
-"""
+"""Benchmark a reasonable batch size for RNA-FM at a fixed sequence length."""
 
 import argparse
-import gc
 import os
 import random
 import sys
@@ -74,16 +67,18 @@ def run_once(model, batch_converter, device: torch.device, batch_size: int, seq_
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats()
 
-    start = time.time()
+    start = time.perf_counter()
     with torch.no_grad():
-        _ = model(batch_tokens, repr_layers=[12])
+        out = model(batch_tokens, repr_layers=[12])
+        rep = out["representations"][12]
+        _ = rep.sum().item()
     if device.type == "cuda":
         torch.cuda.synchronize()
-    elapsed = time.time() - start
+    elif device.type == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "synchronize"):
+        torch.mps.synchronize()
+    elapsed = time.perf_counter() - start
 
     del batch_tokens
-    clear_device_cache(device)
-    gc.collect()
     return elapsed
 
 
@@ -109,7 +104,7 @@ def try_batch(
         return True, elapsed, peak, mps_current, mps_driver
     except RuntimeError as e:
         msg = str(e).lower()
-        if "out of memory" in msg or "mps" in msg or "cuda" in msg:
+        if "out of memory" in msg or "alloc" in msg:
             return False, 0.0, 0, 0, 0
         raise
 
@@ -133,6 +128,7 @@ def main():
     parser.add_argument("--step", type=int, default=64)
     parser.add_argument("--warmup", type=int, default=2)
     parser.add_argument("--margin", type=float, default=0.8)
+    parser.add_argument("--clear-between", action="store_true", help="Clear device cache between batch sizes")
     args = parser.parse_args()
 
     device = get_device(args.device)
@@ -167,6 +163,8 @@ def main():
         else:
             print(f"Batch {b}: {elapsed:.3f}s total | {per_seq_ms:.3f} ms/seq")
         results.append((b, elapsed, peak))
+        if args.clear_between:
+            clear_device_cache(device)
 
     if not results:
         print("No successful batch sizes.")

@@ -20,3 +20,7 @@ Output message format (tuple)
 
 Shutdown
 - Send None to input_q to request a graceful stop after draining current jobs.
+
+Benchmark
+- Use benchmark_batch_size.py to probe a safe batch size at fixed sequence length.
+- Example: python modules/GPU_executor/benchmark_batch_size.py --seq-len 160 --min-batch 128 --max-batch 1024 --step 128
