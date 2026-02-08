@@ -76,12 +76,12 @@ def run_toga_step(
         return
 
     print("# Saving ultimate isoforms to")
-    write_chrom_sizes_from_2bit(args.ref_2bit, chrom_sizes_path)
+    write_chrom_sizes_from_2bit(args.ref_2bit, chrom_sizes_path)  # noqa
     collapse_to_ultimate_isoforms(
         args.ref_bed12,
         args.biomart_tsv,
-        ultimate_bed_path,
-        ultimate_meta_path,
+        ultimate_bed_path,  # noqa
+        ultimate_meta_path,  # noqa
     )
 
     print("# Running TOGA mini...")
