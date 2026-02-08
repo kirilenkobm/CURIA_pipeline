@@ -1,0 +1,88 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.log
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# Conda environments
+conda_env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Genome data files (2bit format)
+*.2bit
+
+# Alignment files
+*.chain
+*.chain.gz
+
+# BED files (except example/reference files in docs or examples directories)
+*.bed
+*.bed12
+!examples/**/*.bed
+!examples/**/*.bed12
+
+# Large intermediate outputs
+intermediate/
+embeddings/
+tmp/
+temp/
+
+# Pipeline outputs (users should specify their own output directories)
+output/
+results/
+
+# Biomart metadata
+*.biomart
+
+# RNA structure files
+*.ps
+*.bppm
+
+# Compressed archives
+*.tar.gz
+*.zip
+*.bz2
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyTorch
+*.pt
+*.pth
+
+# Large model files
+*.ckpt

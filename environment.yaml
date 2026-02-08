@@ -1,0 +1,38 @@
+name: CURIA_pipeline
+channels:
+  - pytorch
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.12  # Using 3.12 as it works for both modules
+  - pip
+  # Shared dependencies with compatible versions
+  - numpy>=1.20
+  - pandas>=1.3
+  - scikit-learn>=0.24
+  # TOGA-mini specific
+  - xgboost
+  - joblib
+  # RNA-FM specific
+  - scipy>=1.7
+  - matplotlib>=3.4
+  - pillow>=8.0
+  - biopython>=1.79
+  - tqdm>=4.60
+  - pyyaml>=5.4
+  # Fix for OpenMP conflict on macOS
+  - llvm-openmp
+  - pip:
+      # TOGA-mini pip dependencies
+      - pyrion
+      # RNA-FM pip dependencies
+      - torch>=1.9
+      - hydra-core>=1.0
+      - omegaconf>=2.0
+      - pytorch-ignite>=0.4
+      - yacs>=0.1.8
+      - openpyxl>=3.0
+      - tensorboard>=2.6
+      - tabulate>=0.8
+      - ptflops>=0.6
