@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import json
 import numpy as np
 
 from pyrion import read_bed12_file, read_gene_data
@@ -53,6 +54,7 @@ def collapse_to_ultimate_isoforms(
     metadata_tsv_path: str,
     out_bed12_path: str,
     out_metadata_tsv_path: str,
+    ultimate_to_isoforms_path: str | None = None,
     id_prefix: str = "U_",
 ) -> Tuple[str, str]:
     transcripts = read_bed12_file(bed12_path)
@@ -66,6 +68,7 @@ def collapse_to_ultimate_isoforms(
 
     ultimate_transcripts: List[Transcript] = []
     metadata_rows: List[Tuple[str, str, str]] = []
+    ultimate_to_isoforms = {}
 
     for gene_id in gene_data.gene_ids:
         gene = transcripts.get_gene_by_id(gene_id)
@@ -119,6 +122,10 @@ def collapse_to_ultimate_isoforms(
             )
         )
         metadata_rows.append((transcript_id, gene_id, biotype))
+        ultimate_to_isoforms[transcript_id] = {
+            "isoforms": [t.id for t in ts],
+            "biotype": biotype,
+        }
 
     out_bed12_path = str(out_bed12_path)
     out_metadata_tsv_path = str(out_metadata_tsv_path)
@@ -132,5 +139,9 @@ def collapse_to_ultimate_isoforms(
         f.write("transcript_id\tgene_id\tbiotype\n")
         for transcript_id, gene_id, biotype in metadata_rows:
             f.write(f"{transcript_id}\t{gene_id}\t{biotype}\n")
+
+    if ultimate_to_isoforms_path:
+        with open(ultimate_to_isoforms_path, "w") as f:
+            json.dump(ultimate_to_isoforms, f, indent=2)
 
     return out_bed12_path, out_metadata_tsv_path

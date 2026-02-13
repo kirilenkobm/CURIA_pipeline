@@ -37,6 +37,7 @@ conda_env/
 *.swp
 *.swo
 *~
+.junie
 
 # OS
 .DS_Store

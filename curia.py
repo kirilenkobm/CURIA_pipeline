@@ -13,11 +13,14 @@ UTILS_DIR = MODULES_DIR / "utils"
 
 from modules.GPU_executor.gpu_executor import ExecutorConfig, run_gpu_executor
 from modules.TOGA_mini.toga_mini import run_toga_mini
-from utils.chrom_sizes import write_chrom_sizes_from_2bit
-from utils.ultimate_isoforms import collapse_to_ultimate_isoforms
-from utils.toga_postprocess import write_rna_orthologous_regions
-from utils.short_ncrna import write_short_ncrna_joblist, run_short_ncrna_scheduler
-from utils.short_ncrna_bed import write_short_ncrna_bed
+from modules.utils.chrom_sizes import write_chrom_sizes_from_2bit
+from modules.utils.ultimate_isoforms import collapse_to_ultimate_isoforms
+from modules.utils.toga_postprocess import write_rna_orthologous_regions
+from modules.utils.short_ncrna import write_short_ncrna_joblist, run_short_ncrna_scheduler
+from modules.utils.short_ncrna_bed import write_short_ncrna_bed
+from modules.utils.merge_query_regions import merge_query_regions
+from modules.utils.query_islands_scanner import write_query_islands_joblist, run_query_islands_scanner
+from modules.utils.output_paths import OutputPaths
 
 
 def parse_args():
@@ -27,13 +30,17 @@ def parse_args():
     parser.add_argument("--chain", required=True, help="Chain file (can be .gz)")
     parser.add_argument("--ref-2bit", required=True, help="Reference genome in .2bit")
     parser.add_argument("--query-2bit", required=True, help="Query genome in .2bit")
+    parser.add_argument(
+        "--ref-preprocessed",
+        help="Path to preprocessed reference lncRNA data (optional)",
+    )
     parser.add_argument("--gpu-max-batch", type=int, default=128, help="Max GPU batch size")
     parser.add_argument("--short-max-workers", type=int, default=64, help="Max concurrent short ncRNA jobs")
     parser.add_argument("--output-dir", required=True, help="Output directory")
     parser.add_argument(
-        "--debug",
+        "--skip-completed",
         action="store_true",
-        help="Skip TOGA mini if output files already exist",
+        help="Skip pipeline steps if their output files already exist (useful for debugging/resuming)",
     )
 
     if len(sys.argv) < 2:
@@ -64,37 +71,48 @@ def shutdown_gpu_executor(proc, input_q):
 
 def run_toga_step(
     args,
-    ultimate_bed_path: Path,
-    ultimate_meta_path: Path,
-    chrom_sizes_path: Path,
-    toga_regions_path: Path,
-    toga_classification_path: Path,
-    debug: bool,
+    paths: OutputPaths,
+    skip_completed: bool,
 ) -> None:
-    if debug and toga_regions_path.exists() and toga_classification_path.exists():
-        print("# TOGA outputs exist; skipping TOGA mini.")
+    if skip_completed and paths.toga_regions.exists() and paths.toga_classification.exists():
+        print("# [SKIP] TOGA outputs exist, skipping TOGA mini.")
         return
 
     print("# Saving ultimate isoforms to")
-    write_chrom_sizes_from_2bit(args.ref_2bit, chrom_sizes_path)  # noqa
+    write_chrom_sizes_from_2bit(args.ref_2bit, paths.chrom_sizes)  # noqa
     collapse_to_ultimate_isoforms(
         args.ref_bed12,
         args.biomart_tsv,
-        ultimate_bed_path,  # noqa
-        ultimate_meta_path,  # noqa
+        paths.ultimate_bed,  # noqa
+        paths.ultimate_meta,  # noqa
+        ultimate_to_isoforms_path=str(paths.ultimate_to_isoforms),
     )
 
     print("# Running TOGA mini...")
+    se_model_path = TOGA_MINI_DIR / "chain_classification_models" / "se_model.dat"
+    me_model_path = TOGA_MINI_DIR / "chain_classification_models" / "me_model.dat"
+
+    print(f"Using models:\nSE: {se_model_path}\nME: {me_model_path}")
+
     run_toga_mini(
         args.chain,
-        str(ultimate_bed_path),
-        str(ultimate_meta_path),
-        str(chrom_sizes_path),
-        str(toga_regions_path),
-        str(toga_classification_path),
-        str(TOGA_MINI_DIR / "chain_classification_models" / "se_model.dat"),
-        str(TOGA_MINI_DIR / "chain_classification_models" / "me_model.dat"),
+        str(paths.ultimate_bed),
+        str(paths.ultimate_meta),
+        str(paths.chrom_sizes),
+        str(paths.toga_regions),
+        str(paths.toga_classification),
+        str(se_model_path),
+        str(me_model_path),
     )
+
+
+def preprocess_reference_lnc_rnas(output_path: Path) -> Path:
+    if output_path.exists():
+        return output_path
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("{}", encoding="utf-8")
+    return output_path
 
 
 def main():
@@ -109,66 +127,123 @@ def main():
         # read and validate input
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        ultimate_bed_path = output_dir / "ultimate_isoforms.bed"
-        ultimate_meta_path = output_dir / "ultimate_isoforms.tsv"
-        toga_regions_path = output_dir / "toga_orthologous_regions.tsv"
-        toga_classification_path = output_dir / "toga_classification_table.tsv"
-        rna_toga_regions_path = output_dir / "rna_orthologous_regions.tsv"
-        short_joblist_path = output_dir / "short_ncRNA_joblist.txt"
-        short_sqlite_path = output_dir / "short_ncRNA_results.sqlite"
-        short_bed_path = output_dir / "intermediate_bed_fliles" / "short_rna_annotation_intermediate.bed"
-        chrom_sizes_path = output_dir / "reference.chrom.sizes.tsv"
+        ref_preprocessed_override = None
+        if args.ref_preprocessed:
+            ref_preprocessed_override = Path(args.ref_preprocessed)
+        paths = OutputPaths(output_dir, ref_preprocessed_override=ref_preprocessed_override)
+
+        # Ensure mappings, intermediate sqlite, toga results, and joblists directories exist
+        paths.mappings_dir.mkdir(parents=True, exist_ok=True)
+        paths.intermediate_sqlite_dir.mkdir(parents=True, exist_ok=True)
+        paths.toga_results_dir.mkdir(parents=True, exist_ok=True)
+        paths.joblists_dir.mkdir(parents=True, exist_ok=True)
 
         run_toga_step(
             args,
-            ultimate_bed_path,
-            ultimate_meta_path,
-            chrom_sizes_path,
-            toga_regions_path,
-            toga_classification_path,
-            args.debug,
+            paths,
+            args.skip_completed,
         )
 
-        print("# Post-processing TOGA results for RNA biotypes...")
-        write_rna_orthologous_regions(
-            str(toga_regions_path),
-            str(ultimate_meta_path),
-            str(ultimate_bed_path),
-            str(rna_toga_regions_path),
-        )
+        # Post-process TOGA results
+        if args.skip_completed and paths.rna_toga_regions.exists():
+            print("# [SKIP] RNA TOGA regions exist, skipping post-processing.")
+        else:
+            print("# Post-processing TOGA results for RNA biotypes...")
+            write_rna_orthologous_regions(
+                str(paths.toga_regions),
+                str(paths.ultimate_meta),
+                str(paths.ultimate_bed),
+                str(paths.rna_toga_regions),
+            )
 
-        # process toga results, split into short and long jobs
-        print("# Preparing short ncRNA joblist...")
-        write_short_ncrna_joblist(
-            str(rna_toga_regions_path),
-            str(ultimate_bed_path),
-            str(short_joblist_path),
-            max_length=160,
-        )
+        # Prepare short ncRNA joblist
+        if args.skip_completed and paths.short_joblist.exists():
+            print("# [SKIP] Short ncRNA joblist exists, skipping preparation.")
+        else:
+            print("# Preparing short ncRNA joblist...")
+            write_short_ncrna_joblist(
+                str(paths.rna_toga_regions),
+                str(paths.ultimate_bed),
+                str(paths.short_joblist),
+                max_length=160,
+            )
 
-        print("# Running short ncRNA scheduler...")
-        run_short_ncrna_scheduler(
-            str(short_joblist_path),
-            str(ultimate_bed_path),
-            str(args.ref_2bit),
-            str(args.query_2bit),
-            input_q,
-            output_q,
-            str(short_sqlite_path),
-            max_concurrent=args.short_max_workers,
-            dump_tsv_path=str(output_dir / "temp_shortrna_results.tsv"),
-        )
+        if args.ref_preprocessed and paths.preprocessed_reference.exists():
+            preprocessed_ref = paths.preprocessed_reference
+        else:
+            preprocessed_ref = preprocess_reference_lnc_rnas(paths.preprocessed_reference)
+        print(f"# Preprocessed reference data: {preprocessed_ref}")
 
-        print("# Writing short ncRNA BED9 annotation...")
-        write_short_ncrna_bed(
-            str(short_sqlite_path),
-            str(short_bed_path),
-        )
+        # Merge query regions
+        if args.skip_completed and paths.query_regions_clusters.exists():
+            print("# [SKIP] Query regions clusters exist, skipping merge.")
+        else:
+            print("# Preparing merged long ncRNA query regions...")
+            merge_query_regions(
+                paths.rna_toga_regions,
+                paths.short_joblist,
+                paths.merged_query_mapping,
+                paths.long_jobs,
+                paths.query_regions_clusters,
+                ultimate_to_query_path=paths.ultimate_to_query,
+            )
+
+        # Run short ncRNA scheduler
+        if args.skip_completed and paths.short_sqlite.exists():
+            print("# [SKIP] Short ncRNA sqlite exists, skipping scheduler.")
+        else:
+            print("# Running short ncRNA scheduler...")
+            run_short_ncrna_scheduler(
+                str(paths.short_joblist),
+                str(paths.ultimate_bed),
+                str(args.ref_2bit),
+                str(args.query_2bit),
+                input_q,
+                output_q,
+                str(paths.short_sqlite),
+                max_concurrent=args.short_max_workers,
+                dump_tsv_path=str(output_dir / "temp_shortrna_results.tsv"),
+            )
+
+        # Write short ncRNA BED
+        if args.skip_completed and paths.short_bed.exists():
+            print("# [SKIP] Short ncRNA BED exists, skipping write.")
+        else:
+            print("# Writing short ncRNA BED9 annotation...")
+            write_short_ncrna_bed(
+                str(paths.short_sqlite),
+                str(paths.short_bed),
+            )
+
+        # Prepare query islands joblist
+        if args.skip_completed and paths.query_islands_joblist.exists():
+            print("# [SKIP] Query islands joblist exists, skipping preparation.")
+        else:
+            print("# Preparing query islands scanner joblist...")
+            write_query_islands_joblist(
+                str(paths.query_regions_clusters),
+                str(paths.query_islands_joblist),
+            )
+
+        # Run query islands scanner
+        if args.skip_completed and paths.query_islands_sqlite.exists():
+            print("# [SKIP] Query islands sqlite exists, skipping scanner.")
+        else:
+            print("# Running query islands scanner...")
+            run_query_islands_scanner(
+                str(paths.query_islands_joblist),
+                str(args.query_2bit),
+                input_q,
+                output_q,
+                str(paths.query_islands_sqlite),
+                str(MODULES_DIR / "logreg_signal_noise" / "logreg_noise_model.pkl"),
+                max_concurrent=args.short_max_workers,
+                output_json_path=str(paths.query_islands_json),
+            )
 
         # fill the jobs queue with long preprocessing jobs - execute
         # fill the jobs queue with long jobs - execute
         # process the results
-        pass
     finally:
         print("Shutting down GPU executor...")
         shutdown_gpu_executor(proc, input_q)
