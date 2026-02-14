@@ -22,6 +22,11 @@ wheels/
 MANIFEST
 *.log
 
+# SQLite
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
 # Virtual environments
 venv/
 ENV/
@@ -45,30 +50,44 @@ Thumbs.db
 
 # Genome data files (2bit format)
 *.2bit
+!input_data/2bit/hg38.test.subset.2bit
+!input_data/2bit/mm39.test.subset.2bit
 
 # Alignment files
 *.chain
 *.chain.gz
+!input_data/chains/test_sample.chain
+!input_data/chains/test_sample.chain.gz
 
 # BED files (except example/reference files in docs or examples directories)
 *.bed
 *.bed12
 !examples/**/*.bed
 !examples/**/*.bed12
+!input_data/reference_annotation/test_sample.bed
 
 # Large intermediate outputs
 intermediate/
 embeddings/
 tmp/
 temp/
+*.db
+*.pkl
+*.json
 
 # Pipeline outputs (users should specify their own output directories)
 output/
 results/
 sample_output/
+sample_preprocessing_reference/
+quick_test/
+
 
 # Biomart metadata
 *.biomart
+
+# Test data exceptions
+!input_data/reference_annotation/test_sample.metadata.tsv
 
 # RNA structure files
 *.ps
@@ -95,7 +114,6 @@ sample_output/
 *.blg
 *.fdb_latexmk
 *.fls
-*.log
 *.out
 *.toc
 *.lof

@@ -29,7 +29,11 @@ class OutputPaths:
 
     @property
     def rna_toga_regions(self) -> Path:
-        return self.output_dir / "rna_orthologous_regions.tsv"
+        return self.toga_results_dir / "rna_orthologous_regions.tsv"
+
+    @property
+    def chrom_sizes(self) -> Path:
+        return self.toga_results_dir / "reference_chrom_sizes.tsv"
 
     @property
     def joblists_dir(self) -> Path:
@@ -58,10 +62,6 @@ class OutputPaths:
     @property
     def query_regions_clusters(self) -> Path:
         return self.mappings_dir / "query_regions_clusters.json"
-
-    @property
-    def chrom_sizes(self) -> Path:
-        return self.output_dir / "reference.chrom.sizes.tsv"
 
     @property
     def merged_query_mapping(self) -> Path:

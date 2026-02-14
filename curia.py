@@ -2,6 +2,7 @@
 
 import argparse
 import multiprocessing as mp
+import signal
 import sys
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from modules.utils.short_ncrna import write_short_ncrna_joblist, run_short_ncrna
 from modules.utils.short_ncrna_bed import write_short_ncrna_bed
 from modules.utils.merge_query_regions import merge_query_regions
 from modules.utils.query_islands_scanner import write_query_islands_joblist, run_query_islands_scanner
+from modules.utils.reference_islands_scanner import write_reference_islands_joblist, run_reference_islands_scanner
 from modules.utils.output_paths import OutputPaths
 
 
@@ -34,13 +36,20 @@ def parse_args():
         "--ref-preprocessed",
         help="Path to preprocessed reference lncRNA data (optional)",
     )
-    parser.add_argument("--gpu-max-batch", type=int, default=128, help="Max GPU batch size")
-    parser.add_argument("--short-max-workers", type=int, default=64, help="Max concurrent short ncRNA jobs")
+    parser.add_argument("--gpu-max-batch", type=int, default=160, help="Max GPU batch size")
+    parser.add_argument("--gpu-min-batch", type=int, default=32, help="Min GPU batch size before timeout")
+    parser.add_argument("--short-max-workers", type=int, default=128, help="Max concurrent short ncRNA jobs")
+    parser.add_argument("--gpu-logger", action="store_true", help="Enable GPU utilization logging every 3s")
     parser.add_argument("--output-dir", required=True, help="Output directory")
     parser.add_argument(
         "--skip-completed",
         action="store_true",
         help="Skip pipeline steps if their output files already exist (useful for debugging/resuming)",
+    )
+    parser.add_argument(
+        "--test-cap-jobs",
+        type=int,
+        help="Process no more than N jobs per step (for quick testing)",
     )
 
     if len(sys.argv) < 2:
@@ -53,7 +62,11 @@ def start_gpu_executor(args):
     ctx = mp.get_context("spawn")
     input_q = ctx.Queue()
     output_q = ctx.Queue()
-    cfg = ExecutorConfig(max_batch=args.gpu_max_batch)
+    cfg = ExecutorConfig(
+        max_batch=args.gpu_max_batch,
+        min_batch=args.gpu_min_batch,
+        enable_logging=args.gpu_logger,
+    )
     proc = ctx.Process(target=run_gpu_executor, args=(input_q, output_q, cfg), name="gpu_executor")
     proc.daemon = True
     proc.start()
@@ -78,7 +91,7 @@ def run_toga_step(
         print("# [SKIP] TOGA outputs exist, skipping TOGA mini.")
         return
 
-    print("# Saving ultimate isoforms to")
+    print(f"# Saving ultimate isoforms to {paths.ultimate_bed}")
     write_chrom_sizes_from_2bit(args.ref_2bit, paths.chrom_sizes)  # noqa
     collapse_to_ultimate_isoforms(
         args.ref_bed12,
@@ -106,13 +119,64 @@ def run_toga_step(
     )
 
 
-def preprocess_reference_lnc_rnas(output_path: Path) -> Path:
-    if output_path.exists():
-        return output_path
+def run_reference_islands_step(
+    args,
+    paths: OutputPaths,
+    input_q,
+    output_q,
+    skip_completed: bool,
+) -> Path:
+    """
+    Run Step 2: Reference transcript island scanning.
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("{}", encoding="utf-8")
-    return output_path
+    This preprocessing step only needs to run once per reference genome.
+    Results are saved to --ref-preprocessed path and can be reused across query species.
+    """
+    ref_islands_json = paths.preprocessed_reference
+
+    if skip_completed and ref_islands_json.exists():
+        print(f"# [SKIP] Reference islands JSON exists at {ref_islands_json}, skipping Step 2.")
+        return ref_islands_json
+
+    print("# === Step 2: Scanning reference transcripts for functional islands ===")
+
+    # Create joblist from non-short ultimate isoforms
+    ref_islands_joblist = paths.output_dir / "joblists" / "reference_islands_joblist.txt"
+    if skip_completed and ref_islands_joblist.exists():
+        print(f"# [SKIP] Reference islands joblist exists.")
+    else:
+        print("# Preparing reference islands joblist...")
+        write_reference_islands_joblist(
+            str(paths.rna_toga_regions),
+            str(paths.ultimate_bed),
+            str(paths.short_joblist),
+            str(ref_islands_joblist),
+        )
+
+    # Scan transcripts for islands
+    ref_islands_sqlite = paths.intermediate_sqlite_dir / "reference_islands.db"
+    if skip_completed and ref_islands_json.exists():
+        print(f"# [SKIP] Reference islands results exist.")
+    else:
+        print("# Running reference islands scanner...")
+        # Ensure directories exist before async operations
+        paths.intermediate_sqlite_dir.mkdir(parents=True, exist_ok=True)
+        ref_islands_json.parent.mkdir(parents=True, exist_ok=True)
+
+        logreg_model_path = MODULES_DIR / "logreg_signal_noise" / "logreg_noise_model.pkl"
+        run_reference_islands_scanner(
+            str(ref_islands_joblist),
+            str(args.ref_2bit),
+            input_q,
+            output_q,
+            str(ref_islands_sqlite),
+            str(logreg_model_path),
+            str(ref_islands_json),
+            max_concurrent=args.short_max_workers,
+            test_cap_jobs=args.test_cap_jobs,
+        )
+
+    return ref_islands_json
 
 
 def main():
@@ -120,6 +184,15 @@ def main():
     proc = None
     input_q = None
     output_q = None
+
+    # Set up signal handler for graceful shutdown
+    def signal_handler(signum, frame):
+        print("\n# Interrupted by user (Ctrl+C). Shutting down gracefully...")
+        shutdown_gpu_executor(proc, input_q)
+        sys.exit(1)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
     try:
         print("# Starting GPU executor...")
         proc, input_q, output_q = start_gpu_executor(args)
@@ -156,7 +229,7 @@ def main():
                 str(paths.rna_toga_regions),
             )
 
-        # Prepare short ncRNA joblist
+        # Prepare a short ncRNA joblist
         if args.skip_completed and paths.short_joblist.exists():
             print("# [SKIP] Short ncRNA joblist exists, skipping preparation.")
         else:
@@ -168,27 +241,7 @@ def main():
                 max_length=160,
             )
 
-        if args.ref_preprocessed and paths.preprocessed_reference.exists():
-            preprocessed_ref = paths.preprocessed_reference
-        else:
-            preprocessed_ref = preprocess_reference_lnc_rnas(paths.preprocessed_reference)
-        print(f"# Preprocessed reference data: {preprocessed_ref}")
-
-        # Merge query regions
-        if args.skip_completed and paths.query_regions_clusters.exists():
-            print("# [SKIP] Query regions clusters exist, skipping merge.")
-        else:
-            print("# Preparing merged long ncRNA query regions...")
-            merge_query_regions(
-                paths.rna_toga_regions,
-                paths.short_joblist,
-                paths.merged_query_mapping,
-                paths.long_jobs,
-                paths.query_regions_clusters,
-                ultimate_to_query_path=paths.ultimate_to_query,
-            )
-
-        # Run short ncRNA scheduler
+        # Run a short ncRNA scheduler
         if args.skip_completed and paths.short_sqlite.exists():
             print("# [SKIP] Short ncRNA sqlite exists, skipping scheduler.")
         else:
@@ -205,6 +258,30 @@ def main():
                 dump_tsv_path=str(output_dir / "temp_shortrna_results.tsv"),
             )
 
+        # Step 2: Reference transcript island scanning (reusable across query species)
+        ref_islands_json = run_reference_islands_step(
+            args,
+            paths,
+            input_q,
+            output_q,
+            args.skip_completed,
+        )
+        print(f"# Reference islands data: {ref_islands_json}")
+
+        # Merge query regions
+        if args.skip_completed and paths.query_regions_clusters.exists():
+            print("# [SKIP] Query regions clusters exist, skipping merge.")
+        else:
+            print("# Preparing merged long ncRNA query regions...")
+            merge_query_regions(
+                paths.rna_toga_regions,
+                paths.short_joblist,
+                paths.merged_query_mapping,
+                paths.long_jobs,
+                paths.query_regions_clusters,
+                ultimate_to_query_path=paths.ultimate_to_query,
+            )
+
         # Write short ncRNA BED
         if args.skip_completed and paths.short_bed.exists():
             print("# [SKIP] Short ncRNA BED exists, skipping write.")
@@ -215,13 +292,14 @@ def main():
                 str(paths.short_bed),
             )
 
-        # Prepare query islands joblist
+        # Step 3: Prepare query islands joblist (filtered by Step 2 results)
         if args.skip_completed and paths.query_islands_joblist.exists():
             print("# [SKIP] Query islands joblist exists, skipping preparation.")
         else:
-            print("# Preparing query islands scanner joblist...")
+            print("# === Step 3: Preparing query islands scanner joblist ===")
             write_query_islands_joblist(
                 str(paths.query_regions_clusters),
+                str(ref_islands_json),
                 str(paths.query_islands_joblist),
             )
 

@@ -22,6 +22,17 @@ TODO: automate this
 `cd modules/TOGA_mini/chain_classification_models `
 `./train_toga_chain_class_model.py`
 
+## Quick test
+
+```bash 
+./curia.py --ref-bed12 input_data/reference_annotation/test_sample.bed \
+--biomart-tsv input_data/reference_annotation/test_sample.metadata.tsv \
+--chain input_data/chains/test_sample.chain.gz \
+--ref-2bit input_data/2bit/hg38.test.subset.2bit \
+--query-2bit input_data/2bit/mm39.test.subset.2bit \
+--gpu-max-batch 128 --short-max-workers 100 \
+--gpu-logger --output-dir quick_test
+```
 
 ## Compute requirements
 

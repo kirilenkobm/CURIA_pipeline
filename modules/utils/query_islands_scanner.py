@@ -34,33 +34,111 @@ def _parse_region(region: str) -> Tuple[str, int, int]:
 
 def write_query_islands_joblist(
     query_regions_clusters_path: str,
+    ref_islands_json_path: str,
     out_path: str,
+    min_query_length: int = 128,
+    max_query_length: int = 1_500_000,
+    max_query_ref_ratio: float = 4.0,
 ) -> int:
     """
     Create joblist from merged query regions clusters for island scanning.
-    Each job is a collapsed query region to scan for functional islands.
+
+    FILTERS:
+    - Only transcripts with islands in the reference
+    - Query region length >= min_query_length (default 128 bp)
+    - Query region length <= max_query_length (default 1.5M bp)
+    - Query region length <= max_query_ref_ratio * reference transcript length (default 4x)
 
     Format: merged_query_id, chrom, start, end, strand
     """
+    # Load reference islands data to find transcripts with islands
+    with open(ref_islands_json_path, "r") as f:
+        ref_islands_data = json.load(f)
+
+    transcripts_with_islands = {
+        tid for tid, data in ref_islands_data.items()
+        if data.get("islands")
+    }
+
+    print(f"# Reference: {len(transcripts_with_islands)} transcripts have functional islands")
+
     with open(query_regions_clusters_path, "r") as f:
         clusters = json.load(f)
 
-    kept = 0
+    # Filtering statistics
+    filter_stats = {
+        "total": len(clusters),
+        "no_islands": 0,
+        "too_short": 0,
+        "too_long_abs": 0,
+        "too_long_ratio": 0,
+        "kept": 0,
+    }
+
+    # Track unique transcripts and query mappings in kept clusters
+    kept_transcripts = set()
+    total_query_mappings = 0
+
     with open(out_path, "w") as dst:
         dst.write("merged_query_id\tchrom\tstart\tend\tstrand\n")
 
         for merged_id, cluster_data in clusters.items():
+            # Get ultimate transcript IDs from merged_transcripts
+            merged_transcripts = cluster_data.get("merged_transcripts", [])
+            ultimate_ids = [t["transcript_id"] for t in merged_transcripts]
+
+            # Filter 1: Check if ANY of the ultimate transcripts have islands
+            if not any(uid in transcripts_with_islands for uid in ultimate_ids):
+                filter_stats["no_islands"] += 1
+                continue
+
             merged_region = cluster_data["merged_region"]
             chrom = merged_region["chrom"]
             start = merged_region["start"]
             end = merged_region["end"]
             strand = merged_region["strand"]
+            query_length = end - start
 
+            # Filter 2: Too short
+            if query_length < min_query_length:
+                filter_stats["too_short"] += 1
+                continue
+
+            # Filter 3: Too long (absolute)
+            if query_length > max_query_length:
+                filter_stats["too_long_abs"] += 1
+                continue
+
+            # Filter 4: Too long relative to reference
+            # Check against ALL ultimate transcripts in this cluster
+            too_long_for_all = True
+            for uid in ultimate_ids:
+                if uid in ref_islands_data:
+                    ref_length = ref_islands_data[uid].get("total_length", 0)
+                    if ref_length > 0 and query_length <= max_query_ref_ratio * ref_length:
+                        too_long_for_all = False
+                        break
+
+            if too_long_for_all:
+                filter_stats["too_long_ratio"] += 1
+                continue
+
+            filter_stats["kept"] += 1
+            kept_transcripts.update(ultimate_ids)
+            total_query_mappings += len(merged_transcripts)
             dst.write(f"{merged_id}\t{chrom}\t{start}\t{end}\t{strand}\n")
-            kept += 1
 
-    print(f"# Prepared {kept} query region island scanning jobs.")
-    return kept
+    # Print filtering summary
+    print(f"# Query island scan job filtering summary:")
+    print(f"#   Total query region clusters: {filter_stats['total']}")
+    print(f"#   Filtered - no islands in reference: {filter_stats['no_islands']}")
+    print(f"#   Filtered - too short (<{min_query_length} bp): {filter_stats['too_short']}")
+    print(f"#   Filtered - too long (>{max_query_length:,} bp): {filter_stats['too_long_abs']}")
+    print(f"#   Filtered - too long (>{max_query_ref_ratio}x reference): {filter_stats['too_long_ratio']}")
+    print(f"#   Kept for island scanning: {filter_stats['kept']} query regions")
+    print(f"#     -> {len(kept_transcripts)} unique reference transcripts, {total_query_mappings} total query mappings")
+
+    return filter_stats["kept"]
 
 
 def _extract_sequence(
@@ -110,6 +188,7 @@ class GPUClient:
         self._loop = loop
         self._pending: Dict[Tuple[str, str], asyncio.Future] = {}
         self._lock = threading.Lock()
+        self._stopping = False
         self._thread = threading.Thread(target=self._reader, daemon=True)
         self._thread.start()
 
@@ -121,11 +200,25 @@ class GPUClient:
         self._input.put((worker_id, sequence_id, sequence, {"mean_pool": mean_pool}))
         return await future
 
+    def stop(self) -> None:
+        """Signal reader thread to stop."""
+        self._stopping = True
+
     def _reader(self) -> None:
-        while True:
-            worker_id, sequence_id, emb = self._output.get()
-            key = (worker_id, sequence_id)
-            self._loop.call_soon_threadsafe(self._resolve_future, key, emb)
+        while not self._stopping:
+            try:
+                payload = self._output.get(timeout=0.5)
+                # Batched results: payload is a list of (worker_id, sequence_id, emb) tuples
+                for worker_id, sequence_id, emb in payload:
+                    key = (worker_id, sequence_id)
+                    if self._loop.is_closed():
+                        return
+                    self._loop.call_soon_threadsafe(self._resolve_future, key, emb)
+            except Exception:
+                # Timeout or event loop closed - check stopping flag
+                if self._stopping or self._loop.is_closed():
+                    return
+                continue
 
     def _resolve_future(self, key: Tuple[str, str], emb: np.ndarray) -> None:
         with self._lock:
@@ -253,14 +346,15 @@ async def _process_query_island_scan(
 
     positions = np.array(positions)
 
-    # Get embeddings in batches (mean pooled)
-    embeddings = []
-    for i in range(0, len(windows), batch_size):
-        batch = windows[i:i + batch_size]
-        for j, seq in enumerate(batch):
-            emb = await gpu.embed(job.merged_query_id, f"win:{positions[i + j]}", seq, mean_pool=True)
-            embeddings.append(emb)
+    # Get embeddings - send all windows at once, then await results
+    # This avoids IPC overhead from awaiting each window individually
+    tasks = []
+    for i, seq in enumerate(windows):
+        task = gpu.embed(job.merged_query_id, f"win:{positions[i]}", seq, mean_pool=True)
+        tasks.append(task)
 
+    # Await all embeddings in parallel
+    embeddings = await asyncio.gather(*tasks)
     embeddings = np.stack(embeddings, axis=0)
 
     # Apply LogReg model (via PCA)
@@ -316,6 +410,8 @@ async def _worker(
     prob_threshold: float,
     batch_size: int,
     t0: float,
+    total_jobs: int,
+    max_concurrent: int,
 ) -> None:
     while True:
         job = await job_queue.get()
@@ -324,7 +420,10 @@ async def _worker(
 
         if job_queue.qsize() % 100 == 0:
             elapsed = time.monotonic() - t0
-            print(f"# Query island scan jobs remaining: {job_queue.qsize()} (elapsed {elapsed:.1f}s)")
+            remaining = job_queue.qsize() - max_concurrent
+            done = total_jobs - remaining
+            pct_done = (done / total_jobs * 100) if total_jobs > 0 else 0
+            print(f"# Query island scan jobs: {done}/{total_jobs} done ({pct_done:.1f}%), {remaining} remaining (elapsed {elapsed:.1f}s)")
 
         try:
             islands = await _process_query_island_scan(
@@ -388,6 +487,7 @@ def run_query_islands_scanner(
         writer_task = asyncio.create_task(_sqlite_writer(result_queue, sqlite_path))
 
         job_queue: asyncio.Queue = asyncio.Queue()
+        total_jobs = len(jobs)
         for job in jobs:
             await job_queue.put(job)
         for _ in range(max_concurrent):
@@ -408,6 +508,8 @@ def run_query_islands_scanner(
                     prob_threshold,
                     batch_size,
                     t0,
+                    total_jobs,
+                    max_concurrent,
                 )
             )
             for _ in range(max_concurrent)
@@ -416,6 +518,10 @@ def run_query_islands_scanner(
 
         await result_queue.put(None)
         await writer_task
+
+        # Stop GPU client reader thread
+        gpu.stop()
+
         elapsed_total = time.monotonic() - t0
         print(f"# Query islands scanner finished in {elapsed_total:.1f}s.")
 

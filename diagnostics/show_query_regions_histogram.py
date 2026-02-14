@@ -4,13 +4,16 @@ import json
 import sys
 from collections import Counter
 
-def format_histogram(counts, max_width=60):
-    """Format counts as ASCII histogram."""
+def format_histogram(counts, bin_order, max_width=60):
+    """Format counts as ASCII histogram in specified order."""
     if not counts:
         return
 
     max_count = max(counts.values())
-    for length_bin, count in sorted(counts.items()):
+    for length_bin in bin_order:
+        if length_bin not in counts:
+            continue
+        count = counts[length_bin]
         bar_width = int((count / max_count) * max_width)
         bar = '█' * bar_width
         print(f"{length_bin:>10} | {bar} {count}")
@@ -57,4 +60,7 @@ print(f"Mean length: {sum(lengths)/len(lengths):.0f} bp")
 print(f"Median length: {sorted(lengths)[len(lengths)//2]} bp")
 print(f"Min: {min(lengths)} bp, Max: {max(lengths)} bp")
 print("\nLength distribution:")
-format_histogram(bins)
+
+# Define proper bin order
+bin_order = ["<100", "100-500", "500-1K", "1K-5K", "5K-10K", "10K-50K", "50K-100K", ">100K"]
+format_histogram(bins, bin_order)

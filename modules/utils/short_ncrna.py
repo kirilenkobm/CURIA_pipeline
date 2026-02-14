@@ -284,6 +284,7 @@ class GPUClient:
         self._loop = loop
         self._pending: Dict[Tuple[str, str], asyncio.Future] = {}
         self._lock = threading.Lock()
+        self._stopping = False
         self._thread = threading.Thread(target=self._reader, daemon=True)
         self._thread.start()
 
@@ -295,11 +296,25 @@ class GPUClient:
         self._input.put((worker_id, sequence_id, sequence, {"mean_pool": mean_pool}))
         return await future
 
+    def stop(self) -> None:
+        """Signal reader thread to stop."""
+        self._stopping = True
+
     def _reader(self) -> None:
-        while True:
-            worker_id, sequence_id, emb = self._output.get()
-            key = (worker_id, sequence_id)
-            self._loop.call_soon_threadsafe(self._resolve_future, key, emb)
+        while not self._stopping:
+            try:
+                payload = self._output.get(timeout=0.5)
+                # Batched results: payload is a list of (worker_id, sequence_id, emb) tuples
+                for worker_id, sequence_id, emb in payload:
+                    key = (worker_id, sequence_id)
+                    if self._loop.is_closed():
+                        return
+                    self._loop.call_soon_threadsafe(self._resolve_future, key, emb)
+            except Exception:
+                # Timeout or event loop closed - check stopping flag
+                if self._stopping or self._loop.is_closed():
+                    return
+                continue
 
     def _resolve_future(self, key: Tuple[str, str], emb: np.ndarray) -> None:
         with self._lock:
@@ -483,11 +498,18 @@ async def _process_short_job(
             "status": "query_shorter_than_ref",
         }
 
-    start_positions = range(0, query_len - ref_length + 1, window_step)
+    # Send all window embedding requests at once for better GPU utilization
+    start_positions = list(range(0, query_len - ref_length + 1, window_step))
+    window_tasks = []
     for start in start_positions:
         window_seq = extended_query[start:start + ref_length]
         window_id = f"win:{start}:{start + ref_length}"
-        window_emb = await gpu.embed(job.transcript_id + "|" + job.chain_id, window_id, window_seq, mean_pool=False)
+        task = gpu.embed(job.transcript_id + "|" + job.chain_id, window_id, window_seq, mean_pool=False)
+        window_tasks.append((start, window_seq, task))
+
+    # Await all embeddings
+    for start, window_seq, task in window_tasks:
+        window_emb = await task
         if not np.isfinite(window_emb).all():
             print(
                 "# Warning: non-finite window embedding",
@@ -531,9 +553,12 @@ async def _process_short_job(
     min_len = int(ref_length * min_length_ratio)
     max_len = int(ref_length * max_length_ratio)
 
+    # Send all perturbation embedding requests at once
     perturb_best_mmd = best_mmd
     perturb_best_end = best_end
     any_valid_perturb = False
+
+    cand_tasks = []
     for p in range(-perturbation_range, perturbation_range + 1):
         end = best_end + p
         if end <= best_start or end > query_len:
@@ -543,7 +568,12 @@ async def _process_short_job(
             continue
         cand_seq = extended_query[best_start:end]
         cand_id = f"end:{best_start}:{end}"
-        cand_emb = await gpu.embed(job.transcript_id + "|" + job.chain_id, cand_id, cand_seq, mean_pool=False)
+        task = gpu.embed(job.transcript_id + "|" + job.chain_id, cand_id, cand_seq, mean_pool=False)
+        cand_tasks.append((end, cand_seq, task))
+
+    # Await all perturbation embeddings
+    for end, cand_seq, task in cand_tasks:
+        cand_emb = await task
         if not np.isfinite(cand_emb).all():
             print(
                 "# Warning: non-finite perturbation embedding",
@@ -637,6 +667,7 @@ def run_short_ncrna_scheduler(
         writer_task = asyncio.create_task(_sqlite_writer(result_queue, sqlite_path))
 
         job_queue: asyncio.Queue = asyncio.Queue()
+        total_jobs = len(jobs)
         for job in jobs:
             await job_queue.put(job)
         for _ in range(max_concurrent):
@@ -649,7 +680,10 @@ def run_short_ncrna_scheduler(
                     break
                 if job_queue.qsize() % 200 == 0:
                     elapsed = time.monotonic() - t0
-                    print(f"# Short ncRNA jobs remaining: {job_queue.qsize()} (elapsed {elapsed:.1f}s)")
+                    remaining = job_queue.qsize() - max_concurrent
+                    done = total_jobs - remaining
+                    pct_done = (done / total_jobs * 100) if total_jobs > 0 else 0
+                    print(f"# Short ncRNA jobs: {done}/{total_jobs} done ({pct_done:.1f}%), {remaining} remaining (elapsed {elapsed:.1f}s)")
                 try:
                     result = await _process_short_job(
                         job,
@@ -677,8 +711,47 @@ def run_short_ncrna_scheduler(
 
         await result_queue.put(None)
         await writer_task
+
+        # Stop GPU client reader thread
+        gpu.stop()
+
         elapsed_total = time.monotonic() - t0
         print(f"# Short ncRNA scheduler finished in {elapsed_total:.1f}s.")
+
+        # Print summary statistics
+        conn = sqlite3.connect(sqlite_path)
+        total_jobs = conn.execute("SELECT COUNT(*) FROM short_ncrna_results").fetchone()[0]
+        ok_count = conn.execute(
+            "SELECT COUNT(*) FROM short_ncrna_results WHERE status = 'ok'"
+        ).fetchone()[0]
+        error_count = conn.execute(
+            "SELECT COUNT(*) FROM short_ncrna_results WHERE status LIKE 'error:%'"
+        ).fetchone()[0]
+        failed_count = total_jobs - ok_count - error_count
+
+        # MMD-based quality breakdown for successful alignments
+        perfect_count = conn.execute(
+            "SELECT COUNT(*) FROM short_ncrna_results WHERE status = 'ok' AND mmd_score = 0.0"
+        ).fetchone()[0]
+        close_count = conn.execute(
+            "SELECT COUNT(*) FROM short_ncrna_results WHERE status = 'ok' AND mmd_score > 0.0 AND mmd_score < 0.2"
+        ).fetchone()[0]
+        questionable_count = conn.execute(
+            "SELECT COUNT(*) FROM short_ncrna_results WHERE status = 'ok' AND mmd_score >= 0.2 AND mmd_score < 0.5"
+        ).fetchone()[0]
+        mismatch_count = conn.execute(
+            "SELECT COUNT(*) FROM short_ncrna_results WHERE status = 'ok' AND mmd_score >= 0.5"
+        ).fetchone()[0]
+
+        print(
+            f"# Short ncRNA summary: {total_jobs} total, {ok_count} aligned successfully, "
+            f"{failed_count} failed (various reasons), {error_count} errors"
+        )
+        print(
+            f"#   Quality breakdown: {perfect_count} perfect (MMD=0.0), {close_count} close (MMD<0.2), "
+            f"{questionable_count} questionable (0.2≤MMD<0.5), {mismatch_count} mismatches (MMD≥0.5)"
+        )
+        conn.close()
 
         if dump_tsv_path:
             conn = sqlite3.connect(sqlite_path)
