@@ -62,7 +62,7 @@ def collapse_to_ultimate_isoforms(
         metadata_tsv_path,
         gene_column="gene_id",
         transcript_id_column="transcript_id",
-        transcript_type_column="biotype",
+        transcript_type_column="transcript_biotype",
     )
     transcripts.bind_gene_data(gene_data)
 

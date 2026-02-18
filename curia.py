@@ -2,18 +2,19 @@
 
 import argparse
 import multiprocessing as mp
+import os
 import signal
+import subprocess
 import sys
 from pathlib import Path
 
 # Make GPU executor importable when running from repo root
 MODULES_DIR = Path(__file__).resolve().parent / "modules"
 GPU_EXECUTOR_DIR = MODULES_DIR / "GPU_executor"
-TOGA_MINI_DIR = MODULES_DIR / "TOGA_mini"
+RNA_TOGA_DIR = MODULES_DIR / "rna_toga"
 UTILS_DIR = MODULES_DIR / "utils"
 
 from modules.GPU_executor.gpu_executor import ExecutorConfig, run_gpu_executor
-from modules.TOGA_mini.toga_mini import run_toga_mini
 from modules.utils.chrom_sizes import write_chrom_sizes_from_2bit
 from modules.utils.ultimate_isoforms import collapse_to_ultimate_isoforms
 from modules.utils.toga_postprocess import write_rna_orthologous_regions
@@ -50,6 +51,11 @@ def parse_args():
         "--test-cap-jobs",
         type=int,
         help="Process no more than N jobs per step (for quick testing)",
+    )
+    parser.add_argument(
+        "--stop-after-toga",
+        action="store_true",
+        help="Run only the TOGA step, then exit (useful for generating TOGA outputs only)",
     )
 
     if len(sys.argv) < 2:
@@ -88,7 +94,7 @@ def run_toga_step(
     skip_completed: bool,
 ) -> None:
     if skip_completed and paths.toga_regions.exists() and paths.toga_classification.exists():
-        print("# [SKIP] TOGA outputs exist, skipping TOGA mini.")
+        print("# [SKIP] TOGA outputs exist, skipping RNA TOGA.")
         return
 
     print(f"# Saving ultimate isoforms to {paths.ultimate_bed}")
@@ -101,22 +107,54 @@ def run_toga_step(
         ultimate_to_isoforms_path=str(paths.ultimate_to_isoforms),
     )
 
-    print("# Running TOGA mini...")
-    se_model_path = TOGA_MINI_DIR / "chain_classification_models" / "se_model.dat"
-    me_model_path = TOGA_MINI_DIR / "chain_classification_models" / "me_model.dat"
+    print("# Running RNA TOGA...")
+    toga_script = RNA_TOGA_DIR / "rna_toga.py"
 
-    print(f"Using models:\nSE: {se_model_path}\nME: {me_model_path}")
-
-    run_toga_mini(
+    toga_cmd = [
+        sys.executable,
+        str(toga_script),
         args.chain,
         str(paths.ultimate_bed),
         str(paths.ultimate_meta),
         str(paths.chrom_sizes),
         str(paths.toga_regions),
         str(paths.toga_classification),
-        str(se_model_path),
-        str(me_model_path),
+    ]
+
+    print("RNA TOGA called with:")
+    print(f"  chain: {args.chain}")
+    print(f"  bed: {paths.ultimate_bed}")
+    print(f"  metadata: {paths.ultimate_meta}")
+    print(f"  chrom_sizes: {paths.chrom_sizes}")
+    print(f"  output_regions: {paths.toga_regions}")
+    print(f"  output_classification: {paths.toga_classification}")
+    print(f"\nRunning command: {' '.join(toga_cmd)}\n")
+
+    # Run TOGA in a separate subprocess to isolate native runtimes and avoid segmentation faults.
+    # Set PYTHONUNBUFFERED to force immediate output flushing
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+
+    process = subprocess.Popen(
+        toga_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        env=env,
     )
+
+    # Stream output line by line with immediate flushing
+    for line in process.stdout:
+        print(f"[TOGA] {line}", end="", flush=True)
+
+    # Wait for process to complete
+    return_code = process.wait()
+
+    if return_code != 0:
+        raise RuntimeError(f"RNA TOGA failed with exit code {return_code}")
+
+    print("# RNA TOGA completed successfully.")
 
 
 def run_reference_islands_step(
@@ -216,6 +254,11 @@ def main():
             paths,
             args.skip_completed,
         )
+
+        if args.stop_after_toga:
+            print("# --stop-after-toga set: stopping after TOGA step.")
+            return
+        
 
         # Post-process TOGA results
         if args.skip_completed and paths.rna_toga_regions.exists():

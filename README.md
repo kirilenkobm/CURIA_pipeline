@@ -19,8 +19,6 @@ conda activate CURIA_pipeline
 ```
 
 TODO: automate this
-`cd modules/TOGA_mini/chain_classification_models `
-`./train_toga_chain_class_model.py`
 
 ## Quick test
 
@@ -36,7 +34,7 @@ TODO: automate this
 
 ## Compute requirements
 
-- CPU: required for TOGA-mini and ViennaRNA steps
+- CPU: required for RNA TOGA and ViennaRNA steps
 - GPU: optional, recommended for RNA-FM embeddings
 - Disk: genome alignments and intermediate embeddings may require tens of GB
 
@@ -93,7 +91,7 @@ Metadata is referenced below as `$REFERENCE_METADATA`.
 
 ## Step 0: prefilter lncRNA cores (run once per reference species)
 
-## Step 1: predict potential orthologous regions using TOGA-mini
+## Step 1: predict potential orthologous regions using RNA TOGA
 
 ## Step 2: RNA-FM embeddings-based realignment of reference ncRNAs in the orthologous regions
 

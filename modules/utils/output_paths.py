@@ -13,7 +13,7 @@ class OutputPaths:
 
     @property
     def ultimate_meta(self) -> Path:
-        return self.output_dir / "ultimate_isoforms.tsv"
+        return self.output_dir / "isoforms_union.tsv"
 
     @property
     def toga_results_dir(self) -> Path:
@@ -25,7 +25,7 @@ class OutputPaths:
 
     @property
     def toga_classification(self) -> Path:
-        return self.toga_results_dir / "toga_classification_table.tsv"
+        return self.toga_results_dir / "original_toga_classification_table.tsv"
 
     @property
     def rna_toga_regions(self) -> Path:

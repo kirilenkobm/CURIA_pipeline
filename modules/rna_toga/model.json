@@ -1,0 +1,43 @@
+{
+  "model_type": "logistic_regression",
+  "features": [
+    "synteny_log1p",
+    "gl_exo",
+    "flank_cov"
+  ],
+  "coefficients": {
+    "synteny_log1p": 0.7724763306482143,
+    "gl_exo": -7.735897763403996,
+    "flank_cov": 14.177840240763341,
+    "intercept": 0.07766190115042029
+  },
+  "formula": "0.772476 * log1p(synteny) + -7.735898 * gl_exo + 14.177840 * flank_cov + 0.077662",
+  "threshold": 0.5,
+  "class_labels": {
+    "0": "PARA",
+    "1": "ORTH"
+  },
+  "evaluation": {
+    "confusion_matrix": [
+      [
+        35226,
+        5154
+      ],
+      [
+        2411,
+        35022
+      ]
+    ],
+    "roc_auc": 0.9776067204079875,
+    "n_samples": 77813,
+    "n_orth": 37433,
+    "n_para": 40380
+  },
+  "comparison_with_original_toga": {
+    "total_cases": 77813,
+    "disagreements": 7565,
+    "agreement_rate": 0.9027797411743539,
+    "orth_to_para": 2411,
+    "para_to_orth": 5154
+  }
+}

@@ -81,7 +81,8 @@ results/
 sample_output/
 sample_preprocessing_reference/
 quick_test/
-
+big_test/
+todo.txt
 
 # Biomart metadata
 *.biomart

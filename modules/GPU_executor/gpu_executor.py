@@ -14,6 +14,9 @@ Output queue items:
 """
 
 import os
+# Fix macOS OpenMP conflict
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import sys
 import time
 import queue
@@ -22,9 +25,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-
-# Fix macOS OpenMP conflict
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 # Add RNA-FM module to path
 MODULES_DIR = Path(__file__).resolve().parents[1]
