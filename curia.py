@@ -19,7 +19,7 @@ UTILS_DIR = MODULES_DIR / "utils"
 
 from modules.GPU_executor.gpu_executor import ExecutorConfig, run_gpu_executor
 from modules.utils.chrom_sizes import write_chrom_sizes_from_2bit
-from modules.utils.ultimate_isoforms import collapse_to_ultimate_isoforms
+from modules.utils.union_transcript import collapse_to_union_transcripts
 from modules.utils.toga_postprocess import write_rna_orthologous_regions
 from modules.utils.short_ncrna import write_short_ncrna_joblist, run_short_ncrna_scheduler
 from modules.utils.short_ncrna_bed import write_short_ncrna_bed
@@ -103,14 +103,14 @@ def run_toga_step(
         print("# [SKIP] TOGA outputs exist, skipping RNA TOGA.")
         return
 
-    print(f"# Saving ultimate isoforms to {paths.ultimate_bed}")
+    print(f"# Saving union transcripts to {paths.union_bed}")
     write_chrom_sizes_from_2bit(args.ref_2bit, paths.chrom_sizes)  # noqa
-    collapse_to_ultimate_isoforms(
+    collapse_to_union_transcripts(
         args.ref_bed12,
         args.biomart_tsv,
-        paths.ultimate_bed,  # noqa
-        paths.ultimate_meta,  # noqa
-        ultimate_to_isoforms_path=str(paths.ultimate_to_isoforms),
+        paths.union_bed,  # noqa
+        paths.union_meta,  # noqa
+        union_to_isoforms_path=str(paths.union_to_isoforms),
     )
 
     print("# Running RNA TOGA...")
@@ -120,8 +120,8 @@ def run_toga_step(
         sys.executable,
         str(toga_script),
         args.chain,
-        str(paths.ultimate_bed),
-        str(paths.ultimate_meta),
+        str(paths.union_bed),
+        str(paths.union_meta),
         str(paths.chrom_sizes),
         str(paths.toga_regions),
         str(paths.toga_classification),
@@ -129,8 +129,8 @@ def run_toga_step(
 
     print("RNA TOGA called with:")
     print(f"  chain: {args.chain}")
-    print(f"  bed: {paths.ultimate_bed}")
-    print(f"  metadata: {paths.ultimate_meta}")
+    print(f"  bed: {paths.union_bed}")
+    print(f"  metadata: {paths.union_meta}")
     print(f"  chrom_sizes: {paths.chrom_sizes}")
     print(f"  output_regions: {paths.toga_regions}")
     print(f"  output_classification: {paths.toga_classification}")
@@ -184,7 +184,7 @@ def run_reference_islands_step(
 
     print("# === Step 2: Scanning reference transcripts for functional islands ===")
 
-    # Create joblist from non-short ultimate isoforms
+    # Create joblist from non-short union transcripts
     ref_islands_joblist = paths.output_dir / "joblists" / "reference_islands_joblist.txt"
     if skip_completed and ref_islands_joblist.exists():
         print(f"# [SKIP] Reference islands joblist exists.")
@@ -192,7 +192,7 @@ def run_reference_islands_step(
         print("# Preparing reference islands joblist...")
         write_reference_islands_joblist(
             str(paths.rna_toga_regions),
-            str(paths.ultimate_bed),
+            str(paths.union_bed),
             str(paths.short_joblist),
             str(ref_islands_joblist),
         )
@@ -273,8 +273,8 @@ def main():
             print("# Post-processing TOGA results for RNA biotypes...")
             write_rna_orthologous_regions(
                 str(paths.toga_regions),
-                str(paths.ultimate_meta),
-                str(paths.ultimate_bed),
+                str(paths.union_meta),
+                str(paths.union_bed),
                 str(paths.rna_toga_regions),
             )
 
@@ -285,7 +285,7 @@ def main():
             print("# Preparing short ncRNA joblist...")
             write_short_ncrna_joblist(
                 str(paths.rna_toga_regions),
-                str(paths.ultimate_bed),
+                str(paths.union_bed),
                 str(paths.short_joblist),
                 max_length=160,
             )
@@ -298,7 +298,7 @@ def main():
             print("# Running short ncRNA scheduler...")
             run_short_ncrna_scheduler(
                 str(paths.short_joblist),
-                str(paths.ultimate_bed),
+                str(paths.union_bed),
                 str(args.ref_2bit),
                 str(args.query_2bit),
                 input_q,
@@ -339,7 +339,7 @@ def main():
                 paths.short_joblist,
                 paths.long_jobs,
                 paths.query_regions_clusters,
-                ultimate_to_query_path=paths.ultimate_to_query,
+                union_to_query_path=paths.union_to_query,
             )
 
         # Write short ncRNA BED (only if we ran the scheduler above)
@@ -395,7 +395,7 @@ def main():
             paths.intermediate_bed_dir.mkdir(parents=True, exist_ok=True)
             write_query_islands_bed(
                 str(paths.query_islands_json),
-                str(paths.ultimate_to_query),
+                str(paths.union_to_query),
                 str(paths.query_islands_bed),
             )
 
@@ -406,7 +406,7 @@ def main():
             print("# === Step 4: Preparing island alignment joblist ===")
             write_island_alignment_joblist(
                 str(ref_islands_json),
-                str(paths.ultimate_to_query),
+                str(paths.union_to_query),
                 str(paths.query_islands_json),
                 str(paths.island_alignment_joblist),
             )
@@ -428,7 +428,7 @@ def main():
                 str(args.ref_2bit),
                 str(args.query_2bit),
                 str(ref_islands_json),
-                str(paths.ultimate_to_query),
+                str(paths.union_to_query),
                 str(paths.query_islands_json),
                 input_q,
                 output_q,

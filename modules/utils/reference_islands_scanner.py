@@ -2,7 +2,7 @@
 """
 Reference transcript island scanner (Step 2).
 
-Scans reference lncRNA transcripts (non-short ultimate isoforms) for functional islands
+Scans reference lncRNA transcripts (non-short union transcripts) for functional islands
 using RNA-FM embeddings + LogReg model. Results are saved to SQLite and JSON for reuse
 across multiple query species.
 
@@ -39,14 +39,14 @@ class ReferenceIslandScanJob:
 
 def write_reference_islands_joblist(
     rna_toga_regions_path: str,
-    ultimate_bed_path: str,
+    union_bed_path: str,
     short_joblist_path: str,
     out_joblist_path: str,
 ) -> int:
     """
     Create joblist for reference transcript island scanning.
 
-    Selects ultimate isoforms that:
+    Selects union transcripts that:
     - Appear in RNA TOGA regions (orthologous)
     - Are NOT in the short ncRNA joblist (length > 160)
 
@@ -61,9 +61,9 @@ def write_reference_islands_joblist(
             if parts:
                 short_ids.add(parts[0])  # transcript_id column
 
-    # Load ultimate transcripts
-    transcripts = pyrion.read_bed12_file(ultimate_bed_path)
-    print(f"  Loaded {len(transcripts)} ultimate transcripts")
+    # Load union transcripts
+    transcripts = pyrion.read_bed12_file(union_bed_path)
+    print(f"  Loaded {len(transcripts)} union transcripts")
 
     # Load RNA TOGA regions to filter for orthologous transcripts
     orthologous_ids = set()
@@ -96,13 +96,7 @@ def write_reference_islands_joblist(
                     print(f"  WARNING: Transcript {tid} not found in BED file")
                 continue
 
-            # Extract exon blocks TODO: misuse of pyrion
-            if hasattr(t, 'blocks'):
-                blocks_str = ";".join(f"{int(b[0])},{int(b[1])}" for b in t.blocks)
-            else:
-                iv = t.transcript_interval
-                blocks_str = f"{int(iv.start)},{int(iv.end)}"
-
+            blocks_str = ";".join(f"{int(b[0])},{int(b[1])}" for b in t.blocks)
             iv = t.transcript_interval
             dst.write(f"{tid}\t{iv.chrom}\t{int(iv.start)}\t{int(iv.end)}\t{iv.strand}\t{blocks_str}\n")
             kept += 1

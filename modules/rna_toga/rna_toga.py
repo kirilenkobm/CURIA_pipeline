@@ -17,7 +17,7 @@ from pyrion.ops import intervals_to_array
 
 from pyrion.ops import split_genome_alignment
 from pyrion.ops import merge_transcript_intervals
-from pyrion.ops import project_intervals_through_chain
+from pyrion.ops.chains import project_intervals_through_chain_strict
 
 from pyrion.core.intervals import AnnotatedIntervalSet
 from pyrion.core.intervals import RegionType
@@ -92,10 +92,14 @@ def map_orthologs(ortholog_map, chains, transcripts):
         ts = [transcripts.get_by_id(t_id) for t_id in transcript_ids]
         transcript_arr, transcript_id_arr = transcripts_to_arrays(ts)
         chain = chains.get_by_chain_id(chain_id)
-        projected_list = project_intervals_through_chain(
+        projected_list = project_intervals_through_chain_strict(
             transcript_arr, chain.blocks
         )
         for t_id, elem in zip(transcript_id_arr, projected_list):
+            # Filter out failed liftovers (intervals that are [0, 0])
+            if elem[0][0] == 0 and elem[0][1] == 0:
+                # Skip this transcript - liftover failed
+                continue
             pairs_to_q_intervals[(t_id, chain_id)] = elem[0]
     return pairs_to_q_intervals
 

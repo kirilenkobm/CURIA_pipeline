@@ -8,12 +8,12 @@ class OutputPaths:
     ref_preprocessed_override: Path | None = None
 
     @property
-    def ultimate_bed(self) -> Path:
-        return self.output_dir / "ultimate_isoforms.bed"
+    def union_bed(self) -> Path:
+        return self.output_dir / "union_transcripts.bed"
 
     @property
-    def ultimate_meta(self) -> Path:
-        return self.output_dir / "isoforms_union.tsv"
+    def union_meta(self) -> Path:
+        return self.output_dir / "union_transcripts_metadata.tsv"
 
     @property
     def toga_results_dir(self) -> Path:
@@ -68,12 +68,12 @@ class OutputPaths:
         return self.mappings_dir / "query_regions_clusters.json"
 
     @property
-    def ultimate_to_query(self) -> Path:
-        return self.mappings_dir / "ultimate_to_query.json"
+    def union_to_query(self) -> Path:
+        return self.mappings_dir / "union_to_query.json"
 
     @property
-    def ultimate_to_isoforms(self) -> Path:
-        return self.mappings_dir / "ultimate_to_isoforms.json"
+    def union_to_isoforms(self) -> Path:
+        return self.mappings_dir / "union_to_isoforms.json"
 
     @property
     def long_jobs(self) -> Path:

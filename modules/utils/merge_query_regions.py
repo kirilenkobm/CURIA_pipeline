@@ -87,11 +87,15 @@ def merge_query_regions(
         for entry in group_sorted:
             placed = False
             for cluster in clusters:
-                if any(
-                    _overlap_len((entry["start"], entry["end"]), (c["start"], c["end"]))
-                    >= 0.5 * min(entry["end"] - entry["start"], c["end"] - c["start"])
-                    for c in cluster
-                ):
+                # Check overlap with the merged bounds of the cluster, not individual entries
+                cluster_start = min(e["start"] for e in cluster)
+                cluster_end = max(e["end"] for e in cluster)
+                entry_len = entry["end"] - entry["start"]
+                cluster_len = cluster_end - cluster_start
+                overlap = _overlap_len((entry["start"], entry["end"]), (cluster_start, cluster_end))
+
+                # Require ≥50% overlap with the merged cluster bounds
+                if overlap >= 0.5 * min(entry_len, cluster_len):
                     cluster.append(entry)
                     placed = True
                     break

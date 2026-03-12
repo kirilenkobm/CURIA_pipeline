@@ -43,6 +43,7 @@ conda_env/
 *.swo
 *~
 .junie
+.cache
 
 # OS
 .DS_Store
