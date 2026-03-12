@@ -83,6 +83,7 @@ sample_preprocessing_reference/
 quick_test/
 big_test/
 todo.txt
+draft/
 
 # Biomart metadata
 *.biomart
@@ -121,3 +122,9 @@ todo.txt
 *.lot
 *.synctex.gz
 *.pdf
+
+# Manual exclusion
+/modules/rna_toga/lncrna_comparison_for_review.tsv
+/modules/rna_toga/isoforms_union.tsv
+/modules/rna_toga/comparison_for_review.tsv
+/modules/rna_toga/original_toga_classification_table.tsv

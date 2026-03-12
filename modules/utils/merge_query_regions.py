@@ -16,7 +16,6 @@ def _overlap_len(a: Tuple[int, int], b: Tuple[int, int]) -> int:
 def merge_query_regions(
     rna_regions_path: Path,
     short_joblist_path: Path,
-    out_json_path: Path,
     out_jobs_path: Path,
     clusters_json_path: Path,
     ultimate_to_query_path: Path | None = None,
@@ -79,7 +78,6 @@ def merge_query_regions(
     for e in entries:
         groups.setdefault((e["chrom"], e["strand"]), []).append(e)
 
-    merged_mapping: Dict[str, List[dict]] = {}
     clusters_output = {}
     ultimate_to_query = {}
     merged_regions: List[Tuple[str, int, int, int, List[dict]]] = []
@@ -107,16 +105,6 @@ def merge_query_regions(
 
     for idx, (chrom, start, end, strand, cluster) in enumerate(merged_regions, start=1):
         merged_id = f"query_merged_region_{idx}"
-        merged_mapping[merged_id] = [
-            {
-                "transcript_id": e["transcript_id"],
-                "chain_id": e["chain_id"],
-                "query_region": e["query_region"],
-                "strand": e["strand"],
-                "biotype": e["biotype"],
-            }
-            for e in cluster
-        ]
         clusters_output[merged_id] = {
             "merged_region": {
                 "chrom": chrom,
@@ -141,9 +129,6 @@ def merge_query_regions(
             if ultimate_id not in ultimate_to_query:
                 ultimate_to_query[ultimate_id] = []
             ultimate_to_query[ultimate_id].append(merged_id)
-
-    with open(out_json_path, "w") as f:
-        json.dump(merged_mapping, f, indent=2)
 
     with open(clusters_json_path, "w") as f:
         json.dump(clusters_output, f, indent=2)

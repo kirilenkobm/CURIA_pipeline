@@ -56,16 +56,16 @@ class OutputPaths:
         return self.output_dir / "mappings"
 
     @property
+    def intermediate_bed_dir(self) -> Path:
+        return self.output_dir / "intermediate_bed_files"
+
+    @property
     def short_bed(self) -> Path:
-        return self.output_dir / "intermediate_bed_fliles" / "short_rna_annotation_intermediate.bed"
+        return self.intermediate_bed_dir / "short_rna_annotation_intermediate.bed"
 
     @property
     def query_regions_clusters(self) -> Path:
         return self.mappings_dir / "query_regions_clusters.json"
-
-    @property
-    def merged_query_mapping(self) -> Path:
-        return self.mappings_dir / "merged_query_regions_mapping.json"
 
     @property
     def ultimate_to_query(self) -> Path:
@@ -90,9 +90,37 @@ class OutputPaths:
         return self.joblists_dir / "query_islands_scanner_joblist.txt"
 
     @property
+    def reference_islands_sqlite(self) -> Path:
+        return self.intermediate_sqlite_dir / "reference_islands.sqlite"
+
+    @property
     def query_islands_sqlite(self) -> Path:
         return self.intermediate_sqlite_dir / "query_islands.sqlite"
 
     @property
     def query_islands_json(self) -> Path:
         return self.mappings_dir / "query_islands.json"
+
+    @property
+    def island_alignment_joblist(self) -> Path:
+        return self.joblists_dir / "island_alignment_joblist.txt"
+
+    @property
+    def island_alignment_results(self) -> Path:
+        return self.output_dir / "island_alignment_results.tsv"
+
+    @property
+    def aligned_islands_ref_bed(self) -> Path:
+        return self.intermediate_bed_dir / "aligned_islands_reference.bed"
+
+    @property
+    def aligned_islands_query_bed(self) -> Path:
+        return self.intermediate_bed_dir / "aligned_islands_query.bed"
+
+    @property
+    def reference_islands_bed(self) -> Path:
+        return self.intermediate_bed_dir / "reference_islands.bed"
+
+    @property
+    def query_islands_bed(self) -> Path:
+        return self.intermediate_bed_dir / "query_islands.bed"

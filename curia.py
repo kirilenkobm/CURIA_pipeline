@@ -3,9 +3,12 @@
 import argparse
 import multiprocessing as mp
 import os
+import shutil
 import signal
 import subprocess
 import sys
+import time
+import json
 from pathlib import Path
 
 # Make GPU executor importable when running from repo root
@@ -23,6 +26,9 @@ from modules.utils.short_ncrna_bed import write_short_ncrna_bed
 from modules.utils.merge_query_regions import merge_query_regions
 from modules.utils.query_islands_scanner import write_query_islands_joblist, run_query_islands_scanner
 from modules.utils.reference_islands_scanner import write_reference_islands_joblist, run_reference_islands_scanner
+from modules.utils.island_alignment import write_island_alignment_joblist, run_island_alignment_scheduler
+from modules.utils.island_alignment_bed import write_island_alignment_beds
+from modules.utils.islands_bed import write_reference_islands_bed, write_query_islands_bed
 from modules.utils.output_paths import OutputPaths
 
 
@@ -192,7 +198,6 @@ def run_reference_islands_step(
         )
 
     # Scan transcripts for islands
-    ref_islands_sqlite = paths.intermediate_sqlite_dir / "reference_islands.db"
     if skip_completed and ref_islands_json.exists():
         print(f"# [SKIP] Reference islands results exist.")
     else:
@@ -207,7 +212,7 @@ def run_reference_islands_step(
             str(args.ref_2bit),
             input_q,
             output_q,
-            str(ref_islands_sqlite),
+            str(paths.reference_islands_sqlite),
             str(logreg_model_path),
             str(ref_islands_json),
             max_concurrent=args.short_max_workers,
@@ -218,6 +223,7 @@ def run_reference_islands_step(
 
 
 def main():
+    t0 = time.time()
     args = parse_args()
     proc = None
     input_q = None
@@ -285,8 +291,9 @@ def main():
             )
 
         # Run a short ncRNA scheduler
-        if args.skip_completed and paths.short_sqlite.exists():
-            print("# [SKIP] Short ncRNA sqlite exists, skipping scheduler.")
+        # Check for final output (short_bed), not temporary sqlite
+        if args.skip_completed and paths.short_bed.exists():
+            print("# [SKIP] Short ncRNA BED exists (final output), skipping scheduler.")
         else:
             print("# Running short ncRNA scheduler...")
             run_short_ncrna_scheduler(
@@ -311,6 +318,17 @@ def main():
         )
         print(f"# Reference islands data: {ref_islands_json}")
 
+        # Generate BED12 for reference islands
+        if args.skip_completed and paths.reference_islands_bed.exists():
+            print("# [SKIP] Reference islands BED exists, skipping generation.")
+        else:
+            print("# Writing reference islands BED12...")
+            paths.intermediate_bed_dir.mkdir(parents=True, exist_ok=True)
+            write_reference_islands_bed(
+                str(ref_islands_json),
+                str(paths.reference_islands_bed),
+            )
+
         # Merge query regions
         if args.skip_completed and paths.query_regions_clusters.exists():
             print("# [SKIP] Query regions clusters exist, skipping merge.")
@@ -319,16 +337,13 @@ def main():
             merge_query_regions(
                 paths.rna_toga_regions,
                 paths.short_joblist,
-                paths.merged_query_mapping,
                 paths.long_jobs,
                 paths.query_regions_clusters,
                 ultimate_to_query_path=paths.ultimate_to_query,
             )
 
-        # Write short ncRNA BED
-        if args.skip_completed and paths.short_bed.exists():
-            print("# [SKIP] Short ncRNA BED exists, skipping write.")
-        else:
+        # Write short ncRNA BED (only if we ran the scheduler above)
+        if not (args.skip_completed and paths.short_bed.exists()):
             print("# Writing short ncRNA BED9 annotation...")
             write_short_ncrna_bed(
                 str(paths.short_sqlite),
@@ -347,9 +362,19 @@ def main():
             )
 
         # Run query islands scanner
-        if args.skip_completed and paths.query_islands_sqlite.exists():
-            print("# [SKIP] Query islands sqlite exists, skipping scanner.")
-        else:
+        # Check if output JSON exists (final output, not just sqlite)
+        skip_query_islands = False
+        if args.skip_completed and paths.query_islands_json.exists():
+            try:
+                with open(paths.query_islands_json) as f:
+                    data = json.load(f)
+                    if len(data) > 0:
+                        print(f"# [SKIP] Query islands JSON exists with {len(data)} entries, skipping scanner.")
+                        skip_query_islands = True
+            except (json.JSONDecodeError, Exception):
+                pass
+
+        if not skip_query_islands:
             print("# Running query islands scanner...")
             run_query_islands_scanner(
                 str(paths.query_islands_joblist),
@@ -362,10 +387,82 @@ def main():
                 output_json_path=str(paths.query_islands_json),
             )
 
-        # fill the jobs queue with long preprocessing jobs - execute
-        # fill the jobs queue with long jobs - execute
-        # process the results
+        # Generate BED12 for query islands
+        if args.skip_completed and paths.query_islands_bed.exists():
+            print("# [SKIP] Query islands BED exists, skipping generation.")
+        else:
+            print("# Writing query islands BED12...")
+            paths.intermediate_bed_dir.mkdir(parents=True, exist_ok=True)
+            write_query_islands_bed(
+                str(paths.query_islands_json),
+                str(paths.ultimate_to_query),
+                str(paths.query_islands_bed),
+            )
+
+        # Step 4: Island alignment via windowed MMD
+        if args.skip_completed and paths.island_alignment_joblist.exists():
+            print("# [SKIP] Island alignment joblist exists, skipping preparation.")
+        else:
+            print("# === Step 4: Preparing island alignment joblist ===")
+            write_island_alignment_joblist(
+                str(ref_islands_json),
+                str(paths.ultimate_to_query),
+                str(paths.query_islands_json),
+                str(paths.island_alignment_joblist),
+            )
+
+        # Run island alignment scheduler
+        # Check if file exists AND has more than just header (indicating completion)
+        skip_island_alignment = False
+        if args.skip_completed and paths.island_alignment_results.exists():
+            with open(paths.island_alignment_results) as f:
+                lines = sum(1 for _ in f)
+                if lines > 1:  # More than just header
+                    print(f"# [SKIP] Island alignment results exist ({lines} lines), skipping alignment.")
+                    skip_island_alignment = True
+
+        if not skip_island_alignment:
+            print("# Running island alignment...")
+            run_island_alignment_scheduler(
+                str(paths.island_alignment_joblist),
+                str(args.ref_2bit),
+                str(args.query_2bit),
+                str(ref_islands_json),
+                str(paths.ultimate_to_query),
+                str(paths.query_islands_json),
+                input_q,
+                output_q,
+                str(paths.island_alignment_results),
+                max_concurrent=args.short_max_workers,
+                test_cap_jobs=args.test_cap_jobs,
+            )
+
+        print(f"# Pipeline completed! Island alignment results: {paths.island_alignment_results}")
+
+        # Generate BED12 files from island alignments
+        if args.skip_completed and paths.aligned_islands_ref_bed.exists() and paths.aligned_islands_query_bed.exists():
+            print("# [SKIP] Aligned islands BED files exist, skipping BED generation.")
+        else:
+            print("# Writing aligned islands BED12 files...")
+            paths.intermediate_bed_dir.mkdir(parents=True, exist_ok=True)
+            write_island_alignment_beds(
+                str(paths.island_alignment_results),
+                str(ref_islands_json),
+                str(paths.query_islands_json),
+                str(paths.aligned_islands_ref_bed),
+                str(paths.aligned_islands_query_bed),
+            )
+
+        # Cleanup: remove intermediate SQLite databases
+        if paths.intermediate_sqlite_dir.exists():
+            print(f"# Cleanup: removing {paths.intermediate_sqlite_dir}")
+            shutil.rmtree(paths.intermediate_sqlite_dir)
+
     finally:
+        elapsed = time.time() - t0
+        hours, remainder = divmod(int(elapsed), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        print(f"# Total pipeline wall time: {hours:02d}:{minutes:02d}:{seconds:02d} ({elapsed:.1f}s)")
         print("Shutting down GPU executor...")
         shutdown_gpu_executor(proc, input_q)
 
