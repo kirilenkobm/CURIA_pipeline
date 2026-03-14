@@ -421,9 +421,9 @@ async def _worker(
         if job_queue.qsize() % 100 == 0:
             elapsed = time.monotonic() - t0
             remaining = job_queue.qsize() - max_concurrent
-            done = total_jobs - remaining
-            pct_done = (done / total_jobs * 100) if total_jobs > 0 else 0
-            print(f"# Query island scan jobs: {done}/{total_jobs} done ({pct_done:.1f}%), {remaining} remaining (elapsed {elapsed:.1f}s)")
+            started = total_jobs - remaining
+            pct_started = (started / total_jobs * 100) if total_jobs > 0 else 0
+            print(f"# Query island scan jobs: {started}/{total_jobs} started ({pct_started:.1f}%), {remaining} in queue (elapsed {elapsed:.1f}s)")
 
         try:
             islands = await _process_query_island_scan(

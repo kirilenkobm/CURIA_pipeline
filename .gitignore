@@ -53,6 +53,7 @@ Thumbs.db
 *.2bit
 !input_data/2bit/hg38.test.subset.2bit
 !input_data/2bit/mm39.test.subset.2bit
+*.gtf
 
 # Alignment files
 *.chain
@@ -129,3 +130,7 @@ draft/
 /modules/rna_toga/isoforms_union.tsv
 /modules/rna_toga/comparison_for_review.tsv
 /modules/rna_toga/original_toga_classification_table.tsv
+/input_data/mm39_annotation_validation/mm39_gencode_metadata.tsv
+/input_data/mm39_annotation_validation/all_est.txt
+/input_data/mm39_annotation_validation/all_mrna.txt
+/input_data/mm39_annotation_validation/mm39_quick_test_metadata.tsv

@@ -26,7 +26,11 @@ from modules.utils.short_ncrna_bed import write_short_ncrna_bed
 from modules.utils.merge_query_regions import merge_query_regions
 from modules.utils.query_islands_scanner import write_query_islands_joblist, run_query_islands_scanner
 from modules.utils.reference_islands_scanner import write_reference_islands_joblist, run_reference_islands_scanner
-from modules.utils.island_alignment import write_island_alignment_joblist, run_island_alignment_scheduler
+from modules.utils.island_alignment import (
+    IslandAlignmentConfig,
+    write_island_alignment_joblist,
+    run_island_alignment_scheduler,
+)
 from modules.utils.island_alignment_bed import write_island_alignment_beds
 from modules.utils.islands_bed import write_reference_islands_bed, write_query_islands_bed
 from modules.utils.output_paths import OutputPaths

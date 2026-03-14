@@ -79,6 +79,13 @@ def write_orthologous_regions(pairs_to_q_intervals, chains, transcripts, output_
 
         transcript_strand = transcript_obj.strand
         chain_q_strand = chain_obj.q_strand
+
+        # Normalize coordinates: ensure start < end
+        # Pyrion's chain projection can return reversed coords for reverse-strand alignments
+        # The strand information is preserved separately in chain_q_strand
+        if start > end:
+            start, end = end, start
+
         region = f"{q_chrom}:{start}-{end}"
         f.write(f"{t_id}\t{c_id}\t{region}\t{transcript_strand}\t{chain_q_strand}\n")
 

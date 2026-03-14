@@ -681,9 +681,9 @@ def run_short_ncrna_scheduler(
                 if job_queue.qsize() % 200 == 0:
                     elapsed = time.monotonic() - t0
                     remaining = job_queue.qsize() - max_concurrent
-                    done = total_jobs - remaining
-                    pct_done = (done / total_jobs * 100) if total_jobs > 0 else 0
-                    print(f"# Short ncRNA jobs: {done}/{total_jobs} done ({pct_done:.1f}%), {remaining} remaining (elapsed {elapsed:.1f}s)")
+                    started = total_jobs - remaining
+                    pct_started = (started / total_jobs * 100) if total_jobs > 0 else 0
+                    print(f"# Short ncRNA jobs: {started}/{total_jobs} started ({pct_started:.1f}%), {remaining} in queue (elapsed {elapsed:.1f}s)")
                 try:
                     result = await _process_short_job(
                         job,

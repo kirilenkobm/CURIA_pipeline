@@ -424,6 +424,8 @@ async def _worker(
     result_queue: asyncio.Queue,
     transcript_metadata: Dict,
     metadata_lock: asyncio.Lock,
+    completed_counter: Dict,  # Shared counter for completed jobs
+    counter_lock: asyncio.Lock,
     ref_accessor: TwoBitAccessor,
     gpu: GPUClient,
     logreg_model,
@@ -437,28 +439,10 @@ async def _worker(
     max_concurrent: int,
 ) -> None:
     """Worker for processing reference transcripts."""
-    last_log_time = time.monotonic()
     while True:
         job = await job_queue.get()
         if job is None:
             break
-
-        current_time = time.monotonic()
-        remaining = job_queue.qsize() - max_concurrent
-        done = total_jobs - remaining
-
-        # Log every 100 jobs, OR every 30 seconds, OR when <100 remaining
-        should_log = (
-            job_queue.qsize() % 100 == 0 or
-            (current_time - last_log_time) >= 30.0 or
-            remaining < 100
-        )
-
-        if should_log:
-            elapsed = current_time - t0
-            pct_done = (done / total_jobs * 100) if total_jobs > 0 else 0
-            print(f"# Reference island scan jobs: {done}/{total_jobs} done ({pct_done:.1f}%), {remaining} remaining (elapsed {elapsed:.1f}s)")
-            last_log_time = current_time
 
         try:
             transcript_start = time.monotonic()
@@ -475,9 +459,10 @@ async def _worker(
             )
             transcript_time = time.monotonic() - transcript_start
 
-            # Warn about slow transcripts (>60s)
-            if transcript_time > 60.0:
-                print(f"# WARNING: Transcript {job.transcript_id} took {transcript_time:.1f}s (exons: {sum_exons_length:,} bp)")
+            # Only warn about extremely slow transcripts (>120s) - these might indicate issues
+            # Note: Long transcripts (>10kb exonic) can legitimately take 60-90s
+            if transcript_time > 120.0:
+                print(f"# Note: Transcript {job.transcript_id} took {transcript_time:.1f}s (exons: {sum_exons_length:,} bp)")
 
             # Store metadata
             async with metadata_lock:
@@ -490,6 +475,27 @@ async def _worker(
             # Send islands to writer
             for island in islands:
                 await result_queue.put(island)
+
+            # Update completion counter and maybe log progress
+            async with counter_lock:
+                completed_counter['count'] += 1
+                completed = completed_counter['count']
+
+                # Log every 100 completions OR every 30s OR when <100 remaining
+                current_time = time.monotonic()
+                remaining = total_jobs - completed
+                last_log_time = completed_counter['last_log_time']
+                should_log = (
+                    completed % 100 == 0 or
+                    (current_time - last_log_time) >= 30.0 or
+                    remaining < 100
+                )
+
+                if should_log:
+                    elapsed = current_time - t0
+                    pct_completed = (completed / total_jobs * 100) if total_jobs > 0 else 0
+                    print(f"# Reference island scan: {completed}/{total_jobs} completed ({pct_completed:.1f}%), {remaining} in queue (elapsed {elapsed:.1f}s)")
+                    completed_counter['last_log_time'] = current_time
 
         except Exception as exc:
             print(f"# Error processing {job.transcript_id}: {exc}")
@@ -540,6 +546,10 @@ def run_reference_islands_scanner(
         transcript_metadata: Dict = {}
         metadata_lock = asyncio.Lock()
 
+        # Shared completion counter and last log time
+        completed_counter: Dict = {'count': 0, 'last_log_time': t0}
+        counter_lock = asyncio.Lock()
+
         result_queue: asyncio.Queue = asyncio.Queue()
         writer_task = asyncio.create_task(_sqlite_writer(result_queue, sqlite_path))
 
@@ -557,6 +567,8 @@ def run_reference_islands_scanner(
                     result_queue,
                     transcript_metadata,
                     metadata_lock,
+                    completed_counter,
+                    counter_lock,
                     ref_accessor,
                     gpu,
                     logreg_model,

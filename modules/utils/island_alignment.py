@@ -40,29 +40,45 @@ from modules.global_PCA.apply_pca import apply_pca, load_pca
 from modules.utils.mmd_utils import compute_mmd_matrix
 
 # ---------------------------------------------------------------------------
-# Constants
+# Island alignment configuration
 # ---------------------------------------------------------------------------
-WINDOW_SIZE = 80
-STRIDE = 4
-BATCH_SIZE = 64
-MIN_ISLAND_LEN = 48
 
-# MMD computation
-MMD_SKIP = 1.0
-MEAN_DIST_THRESHOLD = 3.0
+@dataclass
+class IslandAlignmentConfig:
+    """All tunable hyperparameters for the island-alignment step.
 
-# Smith-Waterman
-SW_TAU = 0.10
-SW_MAX_DRIFT = 3
-SW_GAP_OPEN = 0.03
-SW_GAP_EXTEND = 0.01
-SW_MIN_SCORE_FRAC = 0.3
-SW_MAX_CHAINS = 5
+    Grouped into four blocks:
+      1. Windowed embedding – how sequences are sliced before RNA-FM
+      2. MMD matrix – kernel-MMD computation controls
+      3. Smith-Waterman – local alignment on the MMD matrix
+      4. Hook/anchor selection – the probe → hook → fill heuristic
+    """
 
-# Hook-based pair selection (level-3 optimisation)
-PROBE_HW = 2
-HOOK_BUFFER = 1
-HOOK_MMD_THRESHOLD = 0.15
+    # -- windowed embedding ---------------------------------------------------
+    window_size: int = 80
+    stride: int = 4
+    batch_size: int = 64
+    min_island_len: int = 48
+
+    # -- MMD matrix -----------------------------------------------------------
+    mmd_skip: float = 1.0           # fill value for skipped pairs
+    mean_dist_threshold: float = 3.0  # mean-centroid distance cutoff
+
+    # -- Smith-Waterman -------------------------------------------------------
+    sw_tau: float = 0.10            # score = tau − mmd  (match bonus)
+    sw_max_drift: int = 3           # max off-diagonal gap in SW
+    sw_gap_open: float = 0.03
+    sw_gap_extend: float = 0.01
+    sw_min_score_frac: float = 0.3  # secondary chain threshold vs. best
+    sw_max_chains: int = 5          # max SW chains extracted per pair
+
+    # -- hook / anchor selection ----------------------------------------------
+    probe_hw: int = 2               # half-width of positional probes
+    hook_buffer: int = 1            # extra rows/cols around hooks for fill
+    hook_mmd_threshold: float = 0.15  # max diagonal MMD to accept a hook
+
+
+DEFAULT_CONFIG = IslandAlignmentConfig()
 
 
 # ===========================================================================
@@ -74,6 +90,7 @@ def write_island_alignment_joblist(
     u2q_map_path: str,
     query_islands_json_path: str,
     out_joblist_path: str,
+    config: IslandAlignmentConfig = DEFAULT_CONFIG,
 ) -> int:
     """
     Create joblist for island alignment jobs.
@@ -103,7 +120,7 @@ def write_island_alignment_joblist(
             # Check if gene has reference islands
             ref_islands = [
                 i for i in ref_data[gene_id].get("islands", [])
-                if i["end"] - i["start"] >= MIN_ISLAND_LEN
+                if i["end"] - i["start"] >= config.min_island_len
             ]
 
             if not ref_islands:
@@ -115,7 +132,7 @@ def write_island_alignment_joblist(
             q_islands = [
                 isl for qr in qr_ids
                 for isl in query_islands_data.get(qr, [])
-                if isl["end"] - isl["start"] >= MIN_ISLAND_LEN
+                if isl["end"] - isl["start"] >= config.min_island_len
             ]
 
             if not q_islands:
@@ -187,12 +204,13 @@ def get_window_embeddings(
     padding_idx: int,
     device: str,
     pca_model: Dict,
+    config: IslandAlignmentConfig = DEFAULT_CONFIG,
 ) -> List[np.ndarray]:
     """Slide windows over sequence, embed each, apply PCA."""
     import torch
 
     seq_len = len(seq)
-    if seq_len < WINDOW_SIZE:
+    if seq_len < config.window_size:
         # Embed full sequence
         data = [("seq", seq.upper().replace("T", "U"))]
         _, _, tokens = batch_converter(data)
@@ -207,12 +225,12 @@ def get_window_embeddings(
         return [apply_pca(raw_emb, pca_model)]
 
     # Slide windows
-    windows = [seq[s:s + WINDOW_SIZE]
-               for s in range(0, seq_len - WINDOW_SIZE + 1, STRIDE)]
+    windows = [seq[s:s + config.window_size]
+               for s in range(0, seq_len - config.window_size + 1, config.stride)]
 
     all_pca = []
-    for i in range(0, len(windows), BATCH_SIZE):
-        batch = windows[i:i + BATCH_SIZE]
+    for i in range(0, len(windows), config.batch_size):
+        batch = windows[i:i + config.batch_size]
         data = [(f"s{j}", s.upper().replace("T", "U")) for j, s in enumerate(batch)]
         _, _, tokens = batch_converter(data)
         tokens = tokens.to(device)
@@ -322,15 +340,16 @@ def _sw_single(S, nr, nq, max_drift, gap_open, gap_extend, mask=None):
     return best_score, path
 
 
-def island_match_score_sw(mmd_matrix: np.ndarray):
+def island_match_score_sw(mmd_matrix: np.ndarray,
+                          config: IslandAlignmentConfig = DEFAULT_CONFIG):
     """Multi-chain local alignment on the MMD matrix."""
     nr, nq = mmd_matrix.shape
     if nr == 0 or nq == 0:
         return 0.0, 0, float("inf"), []
 
-    S = SW_TAU - mmd_matrix
+    S = config.sw_tau - mmd_matrix
     mask = np.zeros((nr, nq), dtype=bool)
-    overlap = STRIDE / WINDOW_SIZE
+    overlap = config.stride / config.window_size
 
     all_paths: List[List[Tuple[int, int]]] = []
     total_score = 0.0
@@ -338,19 +357,19 @@ def island_match_score_sw(mmd_matrix: np.ndarray):
     total_eff_nt = 0
     best_first = None
 
-    for _ in range(SW_MAX_CHAINS):
-        raw, path = _sw_single(S, nr, nq, SW_MAX_DRIFT,
-                               SW_GAP_OPEN, SW_GAP_EXTEND, mask)
+    for _ in range(config.sw_max_chains):
+        raw, path = _sw_single(S, nr, nq, config.sw_max_drift,
+                               config.sw_gap_open, config.sw_gap_extend, mask)
         if not path or raw <= 0:
             break
         if best_first is None:
             best_first = raw
-        elif raw < SW_MIN_SCORE_FRAC * best_first:
+        elif raw < config.sw_min_score_frac * best_first:
             break
 
         all_paths.append(path)
         total_score += raw * overlap
-        total_eff_nt += (WINDOW_SIZE - STRIDE) + len(path) * STRIDE
+        total_eff_nt += (config.window_size - config.stride) + len(path) * config.stride
         all_mmds.extend(float(mmd_matrix[pi, pj]) for pi, pj in path)
 
         for pi, pj in path:
@@ -369,36 +388,41 @@ def island_match_score_sw(mmd_matrix: np.ndarray):
 # Matched-region coordinate helpers
 # ===========================================================================
 
-def get_matched_region_nt(path, side: int) -> Tuple[int, int]:
+def get_matched_region_nt(path, side: int,
+                          config: IslandAlignmentConfig = DEFAULT_CONFIG,
+                          ) -> Tuple[int, int]:
     """Get matched region in nucleotide coordinates from alignment path."""
     wins = [p[side] for p in path]
-    return min(wins) * STRIDE, max(wins) * STRIDE + WINDOW_SIZE
+    return min(wins) * config.stride, max(wins) * config.stride + config.window_size
 
 
 # ===========================================================================
 # Hook-based island pair selection (level-3 optimisation)
 # ===========================================================================
 
-def _get_probe_pairs(n_ref: int, n_q: int) -> List[Tuple[int, int]]:
+def _get_probe_pairs(n_ref: int, n_q: int,
+                     config: IslandAlignmentConfig = DEFAULT_CONFIG,
+                     ) -> List[Tuple[int, int]]:
     """Generate positional probe pairs."""
     pairs = set()
     for ri in range(n_ref):
         q_exp = round(ri * max(n_q - 1, 0) / max(n_ref - 1, 1))
-        for off in range(-PROBE_HW, PROBE_HW + 1):
+        for off in range(-config.probe_hw, config.probe_hw + 1):
             qi = q_exp + off
             if 0 <= qi < n_q:
                 pairs.add((ri, qi))
     return sorted(pairs)
 
 
-def select_pairs_to_compute(n_ref, n_q, pair_results, mmd_matrices):
+def select_pairs_to_compute(n_ref, n_q, pair_results, mmd_matrices,
+                            config: IslandAlignmentConfig = DEFAULT_CONFIG):
     """Phase 2-3: find hooks from probes, determine fill pairs."""
     best_per_ref: Dict[int, Tuple[int, float, float]] = {}
     for pr in pair_results:
         ri, qi = pr["ri"], pr["qi"]
         mmd_val = pr["diag_mean_mmd"]
         run_len = pr["diag_run_len"]
-        if mmd_val > HOOK_MMD_THRESHOLD or run_len < 2:
+        if mmd_val > config.hook_mmd_threshold or run_len < 2:
             continue
         score = -mmd_val + 0.001 * run_len
         if ri not in best_per_ref or score > best_per_ref[ri][1]:
@@ -416,9 +440,9 @@ def select_pairs_to_compute(n_ref, n_q, pair_results, mmd_matrices):
     fill_pairs = set()
     for k in range(len(bounded) - 1):
         r_lo = bounded[k][0] + 1
-        q_lo = max(0, bounded[k][1] + 1 - HOOK_BUFFER)
+        q_lo = max(0, bounded[k][1] + 1 - config.hook_buffer)
         r_hi = bounded[k + 1][0] - 1
-        q_hi = min(n_q - 1, bounded[k + 1][1] - 1 + HOOK_BUFFER)
+        q_hi = min(n_q - 1, bounded[k + 1][1] - 1 + config.hook_buffer)
         for ri in range(max(0, r_lo), min(n_ref, r_hi + 1)):
             for qi in range(max(0, q_lo), min(n_q, q_hi + 1)):
                 if (ri, qi) not in mmd_matrices:
@@ -543,6 +567,7 @@ async def _process_job(
     padding_idx: int,
     device: str,
     pca_model: Dict,
+    config: IslandAlignmentConfig = DEFAULT_CONFIG,
 ) -> List[Dict]:
     """Process a single island alignment job."""
     gene_id = job.gene_id
@@ -550,7 +575,7 @@ async def _process_job(
     # Select islands
     ref_islands = sorted(
         [i for i in ref_data[gene_id]["islands"]
-         if i["end"] - i["start"] >= MIN_ISLAND_LEN],
+         if i["end"] - i["start"] >= config.min_island_len],
         key=lambda x: x["start"],
     )
 
@@ -558,7 +583,7 @@ async def _process_job(
     q_islands = sorted(
         [isl for qr in qr_ids
          for isl in query_islands_data.get(qr, [])
-         if isl["end"] - isl["start"] >= MIN_ISLAND_LEN],
+         if isl["end"] - isl["start"] >= config.min_island_len],
         key=lambda x: x["start"],
     )
 
@@ -576,20 +601,23 @@ async def _process_job(
 
     # Compute window embeddings
     ref_win_embs = [get_window_embeddings(s, rna_fm_model, batch_converter,
-                                          padding_idx, device, pca_model)
+                                          padding_idx, device, pca_model,
+                                          config)
                     for s in ref_seqs]
     q_win_embs = [get_window_embeddings(s, rna_fm_model, batch_converter,
-                                        padding_idx, device, pca_model)
+                                        padding_idx, device, pca_model,
+                                        config)
                   for s in q_seqs]
 
     # Phase 1: Positional probes
-    probe_pairs = _get_probe_pairs(n_ref, n_q)
+    probe_pairs = _get_probe_pairs(n_ref, n_q, config)
     pair_results = []
     mmd_matrices: Dict[Tuple[int, int], np.ndarray] = {}
 
     def _do_pair(ri, qi):
         mat, nc, ns = compute_mmd_matrix(ref_win_embs[ri], q_win_embs[qi],
-                                         MMD_SKIP, MEAN_DIST_THRESHOLD)
+                                         config.mmd_skip,
+                                         config.mean_dist_threshold)
         mmd_matrices[(ri, qi)] = mat
         mr = max(2, min(len(ref_win_embs[ri]), len(q_win_embs[qi])) // 3)
         mm, rl, rs, qs = best_diagonal_run(mat, min_run=mr)
@@ -606,7 +634,7 @@ async def _process_job(
 
     # Phase 2-3: Hooks + fill
     hooks, fill_pairs = select_pairs_to_compute(
-        n_ref, n_q, pair_results, mmd_matrices)
+        n_ref, n_q, pair_results, mmd_matrices, config)
 
     for ri, qi in fill_pairs:
         _do_pair(ri, qi)
@@ -615,7 +643,7 @@ async def _process_job(
     sw_results = []
     sw_paths = {}
     for (ri, qi), mat in sorted(mmd_matrices.items()):
-        sc, eff, mm, paths = island_match_score_sw(mat)
+        sc, eff, mm, paths = island_match_score_sw(mat, config)
         sw_paths[(ri, qi)] = paths
         old = next((r for r in pair_results
                     if r["ri"] == ri and r["qi"] == qi), None)
@@ -675,9 +703,9 @@ async def _process_job(
 
         for ci in range(max_ch):
             if ci < len(paths) and paths[ci]:
-                rs, re = get_matched_region_nt(paths[ci], side=0)
+                rs, re = get_matched_region_nt(paths[ci], side=0, config=config)
                 re = min(re, len(ref_seqs[ri]))
-                qs, qe = get_matched_region_nt(paths[ci], side=1)
+                qs, qe = get_matched_region_nt(paths[ci], side=1, config=config)
                 qe = min(qe, len(q_seqs[qi]))
                 pmmd = np.mean([mmd_matrices[(ri, qi)][p[0], p[1]]
                                 for p in paths[ci]])
@@ -714,6 +742,7 @@ def run_island_alignment_scheduler(
     output_tsv_path: str,
     max_concurrent: int = 128,
     test_cap_jobs: Optional[int] = None,
+    config: Optional[IslandAlignmentConfig] = None,
 ) -> None:
     """
     Run island alignment scheduler with GPU executor integration.
@@ -730,7 +759,10 @@ def run_island_alignment_scheduler(
         output_tsv_path: Path to output TSV file
         max_concurrent: Maximum concurrent jobs
         test_cap_jobs: Optional cap on number of jobs for testing
+        config: Island alignment hyperparameters (uses defaults if None)
     """
+    if config is None:
+        config = DEFAULT_CONFIG
     import sys
     import os
 
@@ -780,7 +812,7 @@ def run_island_alignment_scheduler(
     print(f"# Processing {len(jobs)} island alignment jobs...")
 
     # Determine max chains for TSV header
-    max_chains_global = 5  # Use SW_MAX_CHAINS as default
+    max_chains_global = config.sw_max_chains
 
     # Write TSV header
     with open(output_tsv_path, "w") as f:
@@ -811,7 +843,7 @@ def run_island_alignment_scheduler(
                 rows = await _process_job(
                     job, ref_data, u_to_query, query_islands_data,
                     ref_acc, query_acc, model, batch_converter,
-                    padding_idx, device, pca_model,
+                    padding_idx, device, pca_model, config,
                 )
 
                 with lock:
