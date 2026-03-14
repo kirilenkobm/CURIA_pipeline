@@ -76,7 +76,6 @@ def apply_pca(embeddings, pca_model=None):
         embeddings_np = embeddings
 
     # Handle shape
-    original_shape = embeddings_np.shape
     if embeddings_np.ndim == 1:
         # Single vector (640,) -> reshape to (1, 640)
         embeddings_np = embeddings_np.reshape(1, -1)

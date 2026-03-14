@@ -12,7 +12,6 @@ Target: ~100k-1M embeddings (640-dim) -> PCA(16)
 
 import sys
 import numpy as np
-import pandas as pd
 from tqdm import tqdm
 from sklearn.decomposition import PCA
 import random
@@ -141,6 +140,7 @@ def extract_genomic_noise_windows(accessor: TwoBitAccessor, chrom_sizes: dict,
         end = start + window_size
 
         try:
+            # TODO: leverage pyrion instead of this
             seq = str(accessor.fetch(chrom, start, end)).upper().replace('T', 'U')
             if 'N' not in seq and len(seq) == window_size:
                 windows.append(seq)
@@ -157,6 +157,7 @@ def get_transcript_sequence(transcript, accessor: TwoBitAccessor) -> str:
     seq = ''.join(seq_parts)
 
     if transcript.strand == -1:
+        # TODO: leverage pyrion instead of this
         comp = {'A': 'U', 'T': 'A', 'G': 'C', 'C': 'G', 'N': 'N'}
         seq = ''.join(comp.get(b, 'N') for b in reversed(seq))
     else:

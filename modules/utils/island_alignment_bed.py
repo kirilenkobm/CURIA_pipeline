@@ -16,10 +16,8 @@ import csv
 import json
 import numpy as np
 from collections import defaultdict
-from pathlib import Path
 from typing import Dict, List, Tuple
 
-import pyrion
 from pyrion.core.genes import Transcript, TranscriptsCollection
 from pyrion.core.strand import Strand
 

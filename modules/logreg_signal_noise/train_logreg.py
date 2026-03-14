@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import numpy as np
 import joblib
-import os
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, roc_auc_score
 

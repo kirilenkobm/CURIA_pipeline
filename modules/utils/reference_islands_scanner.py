@@ -17,8 +17,7 @@ import sqlite3
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 from scipy.ndimage import label

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Tuple
 
 
 def _is_rna_biotype(biotype: str) -> bool:

@@ -27,7 +27,6 @@ from modules.utils.merge_query_regions import merge_query_regions
 from modules.utils.query_islands_scanner import write_query_islands_joblist, run_query_islands_scanner
 from modules.utils.reference_islands_scanner import write_reference_islands_joblist, run_reference_islands_scanner
 from modules.utils.island_alignment import (
-    IslandAlignmentConfig,
     write_island_alignment_joblist,
     run_island_alignment_scheduler,
 )
@@ -231,7 +230,6 @@ def main():
     args = parse_args()
     proc = None
     input_q = None
-    output_q = None
 
     # Set up signal handler for graceful shutdown
     def signal_handler(signum, frame):

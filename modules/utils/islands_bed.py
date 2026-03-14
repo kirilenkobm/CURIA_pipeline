@@ -13,9 +13,7 @@ from __future__ import annotations
 
 import json
 import numpy as np
-from typing import Tuple
 
-import pyrion
 from pyrion.core.genes import Transcript, TranscriptsCollection
 from pyrion.core.strand import Strand
 

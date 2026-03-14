@@ -8,7 +8,6 @@ Saves model coefficients to JSON.
 import sys
 import json
 import argparse
-from pathlib import Path
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LogisticRegression

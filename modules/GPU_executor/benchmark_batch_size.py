@@ -13,7 +13,7 @@ import torch
 # Fix macOS OpenMP conflict
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
-# Add RNA-FM module to path
+# Add RNA-FM module to $PATH
 MODULES_DIR = Path(__file__).resolve().parents[1]
 RNAFM_DIR = MODULES_DIR / "RNA-FM"
 sys.path.insert(0, str(RNAFM_DIR))
@@ -23,11 +23,8 @@ import fm  # noqa: E402
 
 def get_device(preferred: str = "auto") -> torch.device:
     if preferred == "auto":
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            return torch.device("mps")
-        return torch.device("cpu")
+        preferred = "cuda" if torch.cuda.is_available() else "mps" if (hasattr(torch.backends, "mps") and torch.backends.mps.is_available()) else "cpu"
+
     if preferred == "cuda" and torch.cuda.is_available():
         return torch.device("cuda")
     if preferred == "mps" and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():

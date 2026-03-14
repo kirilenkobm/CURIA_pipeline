@@ -158,7 +158,6 @@ def merge_query_regions(
     for (chrom, strand), group_data in intervals_by_group.items():
         # Extract intervals and metadata separately
         intervals = [item[0] for item in group_data]
-        metadata_list = [item[1] for item in group_data]
 
         # Create a GenomicIntervalsCollection
         collection = GenomicIntervalsCollection.from_intervals(intervals)
