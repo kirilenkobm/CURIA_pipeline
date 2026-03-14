@@ -52,17 +52,17 @@ class IslandAlignmentConfig:
     """
 
     # -- windowed embedding ---------------------------------------------------
-    window_size: int = 80
+    window_size: int = 96
     stride: int = 4
     batch_size: int = 64
-    min_island_len: int = 48
+    min_island_len: int = 64
 
     # -- MMD matrix -----------------------------------------------------------
     mmd_skip: float = 1.0           # fill value for skipped pairs
     mean_dist_threshold: float = 3.0  # mean-centroid distance cutoff
 
     # -- Smith-Waterman -------------------------------------------------------
-    sw_tau: float = 0.10            # score = tau − mmd  (match bonus)
+    sw_tau: float = 0.08            # score = tau − mmd  (match bonus)
     sw_max_drift: int = 3           # max off-diagonal gap in SW
     sw_gap_open: float = 0.03
     sw_gap_extend: float = 0.01
@@ -72,7 +72,8 @@ class IslandAlignmentConfig:
     # -- hook / anchor selection ----------------------------------------------
     probe_hw: int = 2               # half-width of positional probes
     hook_buffer: int = 1            # extra rows/cols around hooks for fill
-    hook_mmd_threshold: float = 0.15  # max diagonal MMD to accept a hook
+    hook_mmd_threshold: float = 0.08 # max diagonal MMD to accept a hook
+    enable_fill_islands: bool = False  # whether to add fill islands between anchors
 
 
 DEFAULT_CONFIG = IslandAlignmentConfig()
@@ -482,7 +483,8 @@ def _monotonic_chain_dp(candidates):
 # Hybrid chain: strict anchors + permissive fill
 # ===========================================================================
 
-def build_hybrid_chain(sw_chain, sw_results, pair_results, n_ref, n_q):
+def build_hybrid_chain(sw_chain, sw_results, pair_results, n_ref, n_q,
+                       config: IslandAlignmentConfig = DEFAULT_CONFIG):
     """Build hybrid chain combining SW anchors with permissive fill."""
     anchors = [(ri, qi) for ri, qi, *_ in sw_chain]
 
@@ -531,9 +533,11 @@ def build_hybrid_chain(sw_chain, sw_results, pair_results, n_ref, n_q):
             rlen = info["run_len"] if info else 0
             hybrid.append((lo_r, lo_q, "anchor", mmd, rlen))
 
-        for ri, qi, sc, mmd, rlen in _fill_gap(
-                lo_r + 1, hi_r - 1, lo_q + 1, hi_q - 1):
-            hybrid.append((ri, qi, "fill", mmd, rlen))
+        # Only add fill islands if enabled
+        if config.enable_fill_islands:
+            for ri, qi, sc, mmd, rlen in _fill_gap(
+                    lo_r + 1, hi_r - 1, lo_q + 1, hi_q - 1):
+                hybrid.append((ri, qi, "fill", mmd, rlen))
 
     if anchors_sorted:
         lr, lq = anchors_sorted[-1]
@@ -661,7 +665,7 @@ async def _process_job(
 
     # Hybrid chain
     hybrid = build_hybrid_chain(sw_chain, sw_results, pair_results,
-                                n_ref, n_q)
+                                n_ref, n_q, config)
 
     # Build output rows
     rows = []
