@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Download RNA-FM pretrained model."""
+import os
+# Fix macOS OpenMP conflict
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import sys
 from pathlib import Path
 
