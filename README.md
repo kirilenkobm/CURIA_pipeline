@@ -6,19 +6,14 @@ and secondary structure validation to identify conserved ncRNA loci across dista
 
 # Usage
 
-`git clone --recurse-submodules https://github.com/kirilenkobm/curia_pipeline.git`
-
-Or if you already cloned the repo without `--recurse-submodules`,
-run `git submodule update --init --recursive` after cloning.
-
-Activate env
-
 ```bash
+git clone --recurse-submodules https://github.com/kirilenkobm/curia_pipeline.git
+cd curia_pipeline
 conda env create -f environment.yaml
 conda activate CURIA_pipeline
 ```
 
-TODO: automate this
+**Note:** RNA-FM pretrained model (~500MB) downloads automatically on first run from `proj.cse.cuhk.edu.hk`
 
 ## Quick test
 
@@ -112,10 +107,6 @@ See preprint for details.
 
 - RNA-FM: A foundation model for RNA sequence representation  
   (paper + repo)
-
-- ViennaRNA package
-
-- ???
 
 # Citation
 
