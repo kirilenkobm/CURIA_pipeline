@@ -7,7 +7,7 @@ and secondary structure validation to identify conserved ncRNA loci across dista
 # Usage
 
 ```bash
-git clone --recurse-submodules https://github.com/kirilenkobm/curia_pipeline.git
+git clone --recurse-submodules git@github.com:kirilenkobm/curia_pipeline.git
 cd curia_pipeline
 conda env create -f environment.yaml
 conda activate CURIA_pipeline
