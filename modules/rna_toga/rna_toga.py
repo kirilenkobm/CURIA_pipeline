@@ -100,7 +100,7 @@ def map_orthologs(ortholog_map, chains, transcripts):
         transcript_arr, transcript_id_arr = transcripts_to_arrays(ts)
         chain = chains.get_by_chain_id(chain_id)
         projected_list = project_intervals_through_chain_strict(
-            transcript_arr, chain.blocks
+            transcript_arr, chain.blocks, chain.q_strand
         )
         for t_id, elem in zip(transcript_id_arr, projected_list):
             # Filter out failed liftovers (intervals that are [0, 0])
