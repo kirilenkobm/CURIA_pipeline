@@ -48,7 +48,7 @@ def parse_args():
     )
     parser.add_argument("--gpu-max-batch", type=int, default=160, help="Max GPU batch size")
     parser.add_argument("--gpu-min-batch", type=int, default=32, help="Min GPU batch size before timeout")
-    parser.add_argument("--short-max-workers", type=int, default=128, help="Max concurrent short ncRNA jobs")
+    parser.add_argument("--short-max-workers", type=int, default=128, help="Max concurrent short ncRNA jobs")  # todo: rename to just cpu workers
     parser.add_argument("--gpu-logger", action="store_true", help="Enable GPU utilization logging every 3s")
     parser.add_argument("--output-dir", required=True, help="Output directory")
     parser.add_argument(
