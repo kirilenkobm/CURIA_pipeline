@@ -11,9 +11,8 @@ git clone --recurse-submodules git@github.com:kirilenkobm/curia_pipeline.git
 cd curia_pipeline
 conda env create -f environment.yaml
 conda activate CURIA_pipeline
+./download_model.py  # Download RNA-FM model (~500MB, optional - auto-downloads on first run)
 ```
-
-**Note:** RNA-FM pretrained model (~500MB) downloads automatically on first run from `proj.cse.cuhk.edu.hk`
 
 ## Quick test
 

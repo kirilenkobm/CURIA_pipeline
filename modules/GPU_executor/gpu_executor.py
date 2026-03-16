@@ -123,7 +123,24 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
     if device.type == "cpu":
         print("# Warning: GPU executor running on CPU (CUDA/MPS unavailable).")
 
-    model, alphabet = fm.pretrained.rna_fm_t12()
+    # Load RNA-FM model with corrupted file handling
+    try:
+        model, alphabet = fm.pretrained.rna_fm_t12()
+    except RuntimeError as e:
+        if "failed finding central directory" in str(e) or "PytorchStreamReader failed" in str(e):
+            # Corrupted model file - remove and retry
+            import os
+            cached_file = Path(torch.hub.get_dir()) / "checkpoints" / "RNA-FM_pretrained.pth"
+            if cached_file.exists():
+                print(f"# Corrupted RNA-FM model detected at {cached_file}")
+                print(f"# Removing and re-downloading...")
+                os.remove(cached_file)
+                model, alphabet = fm.pretrained.rna_fm_t12()
+            else:
+                raise
+        else:
+            raise
+
     batch_converter = alphabet.get_batch_converter()
     model.eval()
     model.to(device)
