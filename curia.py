@@ -48,23 +48,13 @@ def parse_args():
     )
     parser.add_argument("--gpu-max-batch", type=int, default=160, help="Max GPU batch size")
     parser.add_argument("--gpu-min-batch", type=int, default=32, help="Min GPU batch size before timeout")
-    parser.add_argument("--short-max-workers", type=int, default=128, help="Max concurrent short ncRNA jobs")  # todo: rename to just cpu workers
+    parser.add_argument("--cpu-max-workers", type=int, default=128, help="Max concurrent CPU workers for all pipeline steps")
     parser.add_argument("--gpu-logger", action="store_true", help="Enable GPU utilization logging every 3s")
     parser.add_argument("--output-dir", required=True, help="Output directory")
     parser.add_argument(
         "--skip-completed",
         action="store_true",
         help="Skip pipeline steps if their output files already exist (useful for debugging/resuming)",
-    )
-    parser.add_argument(
-        "--test-cap-jobs",
-        type=int,
-        help="Process no more than N jobs per step (for quick testing)",
-    )
-    parser.add_argument(
-        "--stop-after-toga",
-        action="store_true",
-        help="Run only the TOGA step, then exit (useful for generating TOGA outputs only)",
     )
 
     if len(sys.argv) < 2:
@@ -218,8 +208,7 @@ def run_reference_islands_step(
             str(paths.reference_islands_sqlite),
             str(logreg_model_path),
             str(ref_islands_json),
-            max_concurrent=args.short_max_workers,
-            test_cap_jobs=args.test_cap_jobs,
+            max_concurrent=args.cpu_max_workers,
         )
 
     return ref_islands_json
@@ -263,11 +252,6 @@ def main():
             args.skip_completed,
         )
 
-        if args.stop_after_toga:
-            print("# --stop-after-toga set: stopping after TOGA step.")
-            return
-        
-
         # Post-process TOGA results
         if args.skip_completed and paths.rna_toga_regions.exists():
             print("# [SKIP] RNA TOGA regions exist, skipping post-processing.")
@@ -306,7 +290,7 @@ def main():
                 input_q,
                 output_q,
                 str(paths.short_sqlite),
-                max_concurrent=args.short_max_workers,
+                max_concurrent=args.cpu_max_workers,
                 dump_tsv_path=str(output_dir / "temp_shortrna_results.tsv"),
             )
 
@@ -385,7 +369,7 @@ def main():
                 output_q,
                 str(paths.query_islands_sqlite),
                 str(MODULES_DIR / "logreg_signal_noise" / "logreg_noise_model.pkl"),
-                max_concurrent=args.short_max_workers,
+                max_concurrent=args.cpu_max_workers,
                 output_json_path=str(paths.query_islands_json),
             )
 
@@ -435,8 +419,7 @@ def main():
                 input_q,
                 output_q,
                 str(paths.island_alignment_results),
-                max_concurrent=args.short_max_workers,
-                test_cap_jobs=args.test_cap_jobs,
+                max_concurrent=args.cpu_max_workers,
             )
 
         print(f"# Pipeline completed! Island alignment results: {paths.island_alignment_results}")
