@@ -83,6 +83,7 @@ results/
 sample_output/
 sample_preprocessing_reference/
 quick_test/
+smoke_test_output/
 big_test/
 todo.txt
 draft/
