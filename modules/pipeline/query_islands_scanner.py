@@ -13,6 +13,8 @@ from scipy.ndimage import label
 
 from pyrion import TwoBitAccessor
 
+from modules.utils.signal_processing import smooth_signal
+
 
 @dataclass(frozen=True)
 class QueryIslandScanJob:
@@ -153,12 +155,7 @@ def _extract_sequence(
     return seq_obj.to_string()
 
 
-def _smooth_signal(s: np.ndarray, window_len: int = 5) -> np.ndarray:
-    """Box filter smoothing."""
-    if window_len <= 1:
-        return s
-    kernel = np.ones(window_len) / window_len
-    return np.convolve(s, kernel, mode='same')
+# Note: _smooth_signal moved to modules.utils.signal_processing.smooth_signal
 
 
 def _get_islands(mask: np.ndarray, positions: np.ndarray, window_size: int) -> List[Dict]:
@@ -358,7 +355,7 @@ async def _process_query_island_scan(
     probs, _ = score_embeddings(embeddings, model=logreg_model, pca_model=pca_model)
 
     # Smooth probabilities
-    probs_smooth = _smooth_signal(probs, smooth_window)
+    probs_smooth = smooth_signal(probs, smooth_window)
 
     # Threshold to find islands
     mask = probs_smooth >= prob_threshold

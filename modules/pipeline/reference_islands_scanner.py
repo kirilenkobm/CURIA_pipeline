@@ -25,6 +25,8 @@ from scipy.ndimage import label
 import pyrion
 from pyrion import TwoBitAccessor
 
+from modules.utils.signal_processing import smooth_signal
+
 
 @dataclass(frozen=True)
 class ReferenceIslandScanJob:
@@ -163,12 +165,7 @@ def _extract_exonic_sequence(
     return ''.join(exon_seqs)
 
 
-def _smooth_signal(s: np.ndarray, window_len: int = 5) -> np.ndarray:
-    """Box filter smoothing."""
-    if window_len <= 1:
-        return s
-    kernel = np.ones(window_len) / window_len
-    return np.convolve(s, kernel, mode='same')
+# Note: _smooth_signal moved to modules.utils.signal_processing.smooth_signal
 
 
 def _get_islands(mask: np.ndarray, positions: np.ndarray, window_size: int) -> List[Dict]:
@@ -383,7 +380,7 @@ async def _process_transcript(
     probs, _ = score_embeddings(embeddings, model=logreg_model, pca_model=None)
 
     # Smooth probabilities
-    probs_smooth = _smooth_signal(probs, smooth_window)
+    probs_smooth = smooth_signal(probs, smooth_window)
 
     # Threshold to find islands
     mask = probs_smooth >= prob_threshold

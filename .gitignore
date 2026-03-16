@@ -134,3 +134,5 @@ draft/
 /input_data/mm39_annotation_validation/all_est.txt
 /input_data/mm39_annotation_validation/all_mrna.txt
 /input_data/mm39_annotation_validation/mm39_quick_test_metadata.tsv
+/validation/bulk_validation_overall.tsv
+/validation/bulk_validation_summary.tsv

@@ -19,20 +19,20 @@ UTILS_DIR = MODULES_DIR / "utils"
 
 from modules.GPU_executor.gpu_executor import ExecutorConfig, run_gpu_executor
 from modules.utils.chrom_sizes import write_chrom_sizes_from_2bit
-from modules.utils.union_transcript import collapse_to_union_transcripts
-from modules.utils.toga_postprocess import write_rna_orthologous_regions
-from modules.utils.short_ncrna import write_short_ncrna_joblist, run_short_ncrna_scheduler
-from modules.utils.short_ncrna_bed import write_short_ncrna_bed
-from modules.utils.merge_query_regions import merge_query_regions
-from modules.utils.query_islands_scanner import write_query_islands_joblist, run_query_islands_scanner
-from modules.utils.reference_islands_scanner import write_reference_islands_joblist, run_reference_islands_scanner
-from modules.utils.island_alignment import (
+from modules.utils.output_paths import OutputPaths
+from modules.converters.union_transcript import collapse_to_union_transcripts
+from modules.converters.short_ncrna_bed import write_short_ncrna_bed
+from modules.converters.island_alignment_bed import write_island_alignment_beds
+from modules.converters.islands_bed import write_reference_islands_bed, write_query_islands_bed
+from modules.pipeline.toga_postprocess import write_rna_orthologous_regions
+from modules.pipeline.short_ncrna import write_short_ncrna_joblist, run_short_ncrna_scheduler
+from modules.pipeline.merge_query_regions import merge_query_regions
+from modules.pipeline.query_islands_scanner import write_query_islands_joblist, run_query_islands_scanner
+from modules.pipeline.reference_islands_scanner import write_reference_islands_joblist, run_reference_islands_scanner
+from modules.pipeline.island_alignment import (
     write_island_alignment_joblist,
     run_island_alignment_scheduler,
 )
-from modules.utils.island_alignment_bed import write_island_alignment_beds
-from modules.utils.islands_bed import write_reference_islands_bed, write_query_islands_bed
-from modules.utils.output_paths import OutputPaths
 
 
 def parse_args():
