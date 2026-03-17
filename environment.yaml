@@ -21,7 +21,7 @@ dependencies:
   # Fix for OpenMP conflict on macOS
   - llvm-openmp
   - pip:
-      - pyrion >= 0.2.2
+      - pyrion >= 0.3.0
       - torch>=1.9  # probably not needed, TODO: check
       - hydra-core>=1.0  # probably not needed, TODO: check
       - omegaconf>=2.0  # probably not needed, TODO: check

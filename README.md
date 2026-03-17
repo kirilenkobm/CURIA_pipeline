@@ -25,14 +25,24 @@ The RNA-FM model (~500MB) downloads automatically on first run, or use `./downlo
 # Optional: benchmark optimal GPU batch size for your hardware
 python modules/GPU_executor/benchmark_batch_size.py
 
-# Run test dataset
+# Run smoke test (~1-2 minutes on strong machines)
+./curia.py \
+  --ref-bed12 input_data/reference_annotation/smoke_test.bed \
+  --biomart-tsv input_data/reference_annotation/smoke_test.metadata.tsv \
+  --chain input_data/chains/smoke_test.chain.gz \
+  --ref-2bit input_data/2bit/hg38.test.subset.2bit \
+  --query-2bit input_data/2bit/mm39.test.subset.2bit \
+  --output-dir smoke_test_output \
+  --gpu-logger
+
+# For a more comprehensive test (~20 minutes)
 ./curia.py \
   --ref-bed12 input_data/reference_annotation/test_sample.bed \
   --biomart-tsv input_data/reference_annotation/test_sample.metadata.tsv \
   --chain input_data/chains/test_sample.chain.gz \
   --ref-2bit input_data/2bit/hg38.test.subset.2bit \
   --query-2bit input_data/2bit/mm39.test.subset.2bit \
-  --output-dir quick_test
+  --output-dir test_output
 ```
 
 ---
@@ -61,18 +71,47 @@ python modules/GPU_executor/benchmark_batch_size.py
   --ref-2bit $REF_2BIT \
   --query-2bit $QUERY_2BIT \
   --output-dir $OUTPUT_DIR \
-  --ref-preprocessed $REFERENCE_DATA  # optional: reuse preprocessed reference
+  --ref-preprocessed $REFERENCE_DATA \  # optional: reuse preprocessed reference
+  --cpu-max-workers 128 \               # max concurrent async workers (default: 128)
+  --gpu-max-batch 160 \                 # max GPU batch size (default: 160, tune with benchmark script)
+  --gpu-min-batch 32 \                  # min batch size before timeout (default: 32)
+  --no-cleanup                          # optional: keep all intermediate files (SQLite DBs, joblists)
 ```
 
-The `--ref-preprocessed` directory contains reference data that only needs to be computed once per reference species and can be reused across multiple query genomes.
+**Performance tuning:**
+- `--cpu-max-workers` controls concurrent async I/O workers (not threads), allowing high parallelism for GPU-bound tasks
+- `--gpu-max-batch` sets maximum batch size sent to GPU; use `python modules/GPU_executor/benchmark_batch_size.py` to find optimal value for your hardware
+- `--gpu-min-batch` sets minimum batch size before GPU executor times out and processes incomplete batch
+- `--ref-preprocessed` directory contains reference data that only needs to be computed once per reference species and can be reused across multiple query genomes
 
 ---
 
 ## Output
 
-- **BED12 annotation** of conserved ncRNA loci in the query genome
-- **Per-locus quality scores** based on structural conservation
-- **Intermediate files** for downstream analysis (RNA-FM alignments, island predictions)
+By default, CURIA automatically cleans up and organizes outputs into a user-friendly structure:
+
+```
+output_dir/
+├── query_annotation/
+│   ├── short_ncRNA.bed              # Short ncRNA annotations (≤160bp)
+│   ├── lncRNA_islands.bed           # Aligned lncRNA islands
+│   ├── reference_islands.bed        # Reference islands (QC)
+│   └── query_islands.bed            # Query islands (QC)
+├── island_alignment_results.tsv     # Island alignment scores
+├── preprocessed_reference.json      # Reusable reference data
+├── reference_union_transcripts.bed  # Collapsed reference isoforms
+├── reference_union_transcripts_metadata.tsv
+├── mappings/
+│   ├── union_to_isoforms.json       # Transcript → isoforms mapping
+│   └── union_to_query.json          # Transcript → query regions mapping
+└── toga_results/
+    ├── rna_orthologous_regions.tsv  # RNA orthology predictions
+    └── toga_orthologous_regions.tsv # Original TOGA output
+```
+
+**Cleanup options:**
+- Use `--no-cleanup` to keep all intermediate files (SQLite DBs, joblists, etc.)
+- Run `./cleanup_outputs.py <output_dir>` to cleanup existing pipeline outputs
 
 ---
 
@@ -96,7 +135,7 @@ CURIA has been validated on human–mouse, human–dog, and human–cow comparis
 
 If you use CURIA, please cite:
 
-> Kirilenko et al., *CURIA: Cross-species Unified ncRNA Inference and Annotation*, preprint in preparation, 2026.
+> Kirilenko, B.M., *CURIA: Cross-species Unified ncRNA Inference and Annotation*, preprint in preparation, 2026.
 
 ---
 

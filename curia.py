@@ -33,6 +33,7 @@ from modules.pipeline.island_alignment import (
     write_island_alignment_joblist,
     run_island_alignment_scheduler,
 )
+from modules.utils.cleanup_outputs import cleanup_and_reorganize
 
 
 def parse_args():
@@ -55,6 +56,11 @@ def parse_args():
         "--skip-completed",
         action="store_true",
         help="Skip pipeline steps if their output files already exist (useful for debugging/resuming)",
+    )
+    parser.add_argument(
+        "--no-cleanup",
+        action="store_true",
+        help="Skip automatic cleanup and reorganization of outputs (keep all intermediate files)",
     )
 
     if len(sys.argv) < 2:
@@ -461,10 +467,11 @@ def main():
                 str(paths.aligned_islands_query_bed),
             )
 
-        # Cleanup: remove intermediate SQLite databases
-        if paths.intermediate_sqlite_dir.exists():
-            print(f"# Cleanup: removing {paths.intermediate_sqlite_dir}")
-            shutil.rmtree(paths.intermediate_sqlite_dir)
+        # Cleanup and reorganize outputs (unless --no-cleanup)
+        if not args.no_cleanup:
+            cleanup_and_reorganize(output_dir, verbose=True)
+        else:
+            print("# [SKIP] Cleanup disabled via --no-cleanup flag")
 
     finally:
         elapsed = time.time() - t0
