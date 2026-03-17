@@ -34,6 +34,7 @@ from modules.pipeline.island_alignment import (
     run_island_alignment_scheduler,
 )
 from modules.utils.cleanup_outputs import cleanup_and_reorganize
+from modules.utils.input_validation import validate_all_inputs, ValidationError
 
 
 def parse_args():
@@ -235,33 +236,22 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
 
     try:
-        print("# Starting GPU executor...")
-        proc, input_q, output_q = start_gpu_executor(args)
-        # sanity check all modules
-        # read and validate input
-        print("# Validating input files...")
-        input_files = {
-            "Reference BED12": args.ref_bed12,
-            "Biomart TSV": args.biomart_tsv,
-            "Chain file": args.chain,
-            "Reference 2bit": args.ref_2bit,
-            "Query 2bit": args.query_2bit,
-        }
-        missing_files = []
-        for name, path in input_files.items():
-            if not Path(path).exists():
-                missing_files.append(f"  - {name}: {path}")
-
-        if args.ref_preprocessed and not Path(args.ref_preprocessed).exists():
-            missing_files.append(f"  - Preprocessed reference: {args.ref_preprocessed}")
-
-        if missing_files:
-            print("# ERROR: The following input files do not exist:")
-            for f in missing_files:
-                print(f)
+        # Validate inputs before starting GPU executor (fail fast)
+        try:
+            validate_all_inputs(
+                args.ref_bed12,
+                args.biomart_tsv,
+                args.chain,
+                args.ref_2bit,
+                args.query_2bit,
+                args.ref_preprocessed,
+            )
+        except ValidationError as e:
+            print(f"\n# INPUT VALIDATION FAILED:\n{e}\n", file=sys.stderr)
             sys.exit(1)
 
-        print("# All input files validated successfully.")
+        print("# Starting GPU executor...")
+        proc, input_q, output_q = start_gpu_executor(args)
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         ref_preprocessed_override = None
