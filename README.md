@@ -1,115 +1,106 @@
 # CURIA
 
-CURIA is a cross-species pipeline for orthology-aware annotation of conserved non-coding RNAs.
-It combines genome alignments, orthologous locus detection, RNA foundation model embeddings,
-and secondary structure validation to identify conserved ncRNA loci across distantly related species.
+**Cross-species Unified ncRNA Inference and Annotation**
 
-# Usage
+CURIA identifies conserved non-coding RNAs across distantly related species by combining genome alignments, orthology prediction, and RNA foundation model embeddings.
+
+---
+
+## Installation
 
 ```bash
 git clone --recurse-submodules git@github.com:kirilenkobm/curia_pipeline.git
 cd curia_pipeline
 conda env create -f environment.yaml
 conda activate CURIA_pipeline
-./download_model.py  # Download RNA-FM model (~500MB, optional - auto-downloads on first run)
 ```
 
-## Quick test
+The RNA-FM model (~500MB) downloads automatically on first run, or use `./download_model.py` to download manually.
 
-```bash 
-./curia.py --ref-bed12 input_data/reference_annotation/test_sample.bed \
---biomart-tsv input_data/reference_annotation/test_sample.metadata.tsv \
---chain input_data/chains/test_sample.chain.gz \
---ref-2bit input_data/2bit/hg38.test.subset.2bit \
---query-2bit input_data/2bit/mm39.test.subset.2bit \
---gpu-max-batch 128 --short-max-workers 100 \
---gpu-logger --output-dir quick_test
-```
+---
 
-## Compute requirements
-
-- CPU: required for RNA TOGA and ViennaRNA steps
-- GPU: optional, recommended for RNA-FM embeddings
-- Disk: genome alignments and intermediate embeddings may require tens of GB
-
-Tested on MacOS with MPS backend and Linux with CUDA.
-
-## Prerequisites
-
-### Reference and query genome sequences in 2bit format.
-
-Referenced below as `$REF_2BIT` and `$QUERY_2BIT`.
-
-### Genome alignment chains.
-
-Referenced below as `$ALIGNMENT_CHAINS`.
-
-### Comprehensive reference annotation in bed12 format.
-
-Note: protein-coding genes will be not projected in the final results, 
-but they increase the accuracy of the orthologous region prediction.
-
-The annotation is referenced below as `$REFERENCE_BED12`.
-
-### Annotation metadata (biomart format for example)
-
-Ideally, mappings between reference transcript ID and biotype.
-Then, reference transcript ID to gene ID.
-
-Metadata is referenced below as `$REFERENCE_METADATA`.
-
-## Outputs
-
-- BED12 annotation of predicted ncRNA loci
-- Per-locus QC scores
-- Intermediate files for RNA-FM alignment and ViennaRNA analysis (optional)
-
-## Running pipeline.
-
-### Activate conda environment
+## Quick Start
 
 ```bash
+# Optional: benchmark optimal GPU batch size for your hardware
+python modules/GPU_executor/benchmark_batch_size.py
 
+# Run test dataset
+./curia.py \
+  --ref-bed12 input_data/reference_annotation/test_sample.bed \
+  --biomart-tsv input_data/reference_annotation/test_sample.metadata.tsv \
+  --chain input_data/chains/test_sample.chain.gz \
+  --ref-2bit input_data/2bit/hg38.test.subset.2bit \
+  --query-2bit input_data/2bit/mm39.test.subset.2bit \
+  --output-dir quick_test
 ```
 
-### Run pipeline
+---
+
+## Requirements
+
+**Input files:**
+- Reference annotation (BED12) and metadata (TSV with transcript-to-biotype mappings)
+- Query and reference genomes (2bit format)
+- Genome alignment chains
+
+**Compute:**
+- CPU required for RNA TOGA and sequence processing
+- GPU optional but recommended for RNA-FM embeddings
+- Tested on macOS (MPS) and Linux (CUDA)
+
+---
+
+## Usage
 
 ```bash
-./curia.py -r $REF_2BIT -q $QUERY_2BIT -c $ALIGNMENT_CHAINS -a $REFERENCE_BED12 -m $REFERENCE_METADATA -r $REFERENCE_DATA -o $OUTPUT_DIR 
+./curia.py \
+  --ref-bed12 $REFERENCE_BED12 \
+  --biomart-tsv $REFERENCE_METADATA \
+  --chain $ALIGNMENT_CHAINS \
+  --ref-2bit $REF_2BIT \
+  --query-2bit $QUERY_2BIT \
+  --output-dir $OUTPUT_DIR \
+  --ref-preprocessed $REFERENCE_DATA  # optional: reuse preprocessed reference
 ```
 
-`$REFERENCE_DATA` contains preprocessed reference annotation - will be created once per reference species.
-`$OUTPUT_DIR` contains final annotation files for the given query genome.
+The `--ref-preprocessed` directory contains reference data that only needs to be computed once per reference species and can be reused across multiple query genomes.
 
-# Pipeline structure
+---
 
-## Step 0: prefilter lncRNA cores (run once per reference species)
+## Output
 
-## Step 1: predict potential orthologous regions using RNA TOGA
+- **BED12 annotation** of conserved ncRNA loci in the query genome
+- **Per-locus quality scores** based on structural conservation
+- **Intermediate files** for downstream analysis (RNA-FM alignments, island predictions)
 
-## Step 2: RNA-FM embeddings-based realignment of reference ncRNAs in the orthologous regions
+---
 
-## Step 3: Vienna-RNA BPPM-based QA of the predicted ncRNAs
+## How It Works
 
-## Step 4: produce final annotation files
+1. **Orthologous loci prediction** — RNA TOGA identifies candidate ncRNA regions in the query genome
+2. **Short ncRNA annotation** — Dedicated MMD-based pipeline for ncRNAs ≤160bp (miRNA, tRNA, snoRNA, etc.)
+3. **Reference island scanning** — RNA-FM identifies functional islands in reference lncRNAs where embeddings separate signal from background; results are reusable across queries
+4. **Query island scanning** — RNA-FM scans orthologous query lncRNA loci for islands (computational bottleneck)
+5. **Island alignment** — Windowed MMD matching of reference and query islands based on RNA-FM embedding similarity
 
-# Validation
+---
 
-CURIA was validated on human–mouse, human–dog, and human–cow genome pairs,
-recovering known conserved lncRNAs and structured ncRNAs.
-See preprint for details.
+## Validation
 
-# Related work
+CURIA has been validated on human–mouse, human–dog, and human–cow comparisons, successfully recovering known conserved lncRNAs and structured ncRNAs. Full validation details are provided in the preprint (in preparation).
 
-- TOGA: Integrating gene annotation with orthology inference at scale  
-  Kirilenko et al., Science (2023)
+---
 
-- RNA-FM: A foundation model for RNA sequence representation  
-  (paper + repo)
-
-# Citation
+## Citation
 
 If you use CURIA, please cite:
 
-Kirilenko et al., *CURIA: Cross-species Unified ncRNA Inference and Annotation*, preprint, 2026.
-(preprint link coming soon)
+> Kirilenko et al., *CURIA: Cross-species Unified ncRNA Inference and Annotation*, preprint in preparation, 2026.
+
+---
+
+## References
+
+- **TOGA:** Kirilenko et al., *Integrating gene annotation with orthology inference at scale*, Science (2023)
+- **RNA-FM:** Chen et al., *Interpretable RNA foundation model from unannotated data for highly accurate RNA structure and function predictions*, arXiv (2022)

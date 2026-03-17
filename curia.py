@@ -233,6 +233,29 @@ def main():
         proc, input_q, output_q = start_gpu_executor(args)
         # sanity check all modules
         # read and validate input
+        print("# Validating input files...")
+        input_files = {
+            "Reference BED12": args.ref_bed12,
+            "Biomart TSV": args.biomart_tsv,
+            "Chain file": args.chain,
+            "Reference 2bit": args.ref_2bit,
+            "Query 2bit": args.query_2bit,
+        }
+        missing_files = []
+        for name, path in input_files.items():
+            if not Path(path).exists():
+                missing_files.append(f"  - {name}: {path}")
+
+        if args.ref_preprocessed and not Path(args.ref_preprocessed).exists():
+            missing_files.append(f"  - Preprocessed reference: {args.ref_preprocessed}")
+
+        if missing_files:
+            print("# ERROR: The following input files do not exist:")
+            for f in missing_files:
+                print(f)
+            sys.exit(1)
+
+        print("# All input files validated successfully.")
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         ref_preprocessed_override = None
