@@ -437,6 +437,7 @@ def main():
                 str(paths.query_islands_json),
                 input_q,
                 output_q,
+                str(paths.island_alignment_sqlite),
                 str(paths.island_alignment_results),
                 max_concurrent=args.cpu_max_workers,
             )

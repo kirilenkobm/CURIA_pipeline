@@ -296,8 +296,9 @@ class GPUClient:
         return await future
 
     def stop(self) -> None:
-        """Signal reader thread to stop."""
+        """Signal reader thread to stop and wait for it to exit."""
         self._stopping = True
+        self._thread.join(timeout=2.0)
 
     def _reader(self) -> None:
         while not self._stopping:

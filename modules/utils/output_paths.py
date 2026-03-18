@@ -122,5 +122,9 @@ class OutputPaths:
         return self.intermediate_bed_dir / "reference_islands.bed"
 
     @property
+    def island_alignment_sqlite(self) -> Path:
+        return self.intermediate_sqlite_dir / "island_alignment_results.sqlite"
+
+    @property
     def query_islands_bed(self) -> Path:
         return self.intermediate_bed_dir / "query_islands.bed"

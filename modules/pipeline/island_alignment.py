@@ -16,7 +16,9 @@ from __future__ import annotations
 import asyncio
 import csv
 import json
+import sqlite3
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -33,7 +35,6 @@ project_root = script_dir.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from modules.global_PCA.apply_pca import apply_pca, load_pca
 from modules.utils.mmd_utils import compute_mmd_matrix
 
 # ---------------------------------------------------------------------------
@@ -77,6 +78,55 @@ class IslandAlignmentConfig:
 
 
 DEFAULT_CONFIG = IslandAlignmentConfig()
+
+
+# ===========================================================================
+# GPU client (shared GPU executor pattern)
+# ===========================================================================
+
+class GPUClient:
+    """Async GPU client for embeddings via the shared GPU executor process."""
+    def __init__(self, input_queue, output_queue, loop: asyncio.AbstractEventLoop):
+        self._input = input_queue
+        self._output = output_queue
+        self._loop = loop
+        self._pending: Dict[Tuple[str, str], asyncio.Future] = {}
+        self._lock = threading.Lock()
+        self._stopping = False
+        self._thread = threading.Thread(target=self._reader, daemon=True)
+        self._thread.start()
+
+    async def embed(self, worker_id: str, sequence_id: str, sequence: str, mean_pool: bool = False) -> np.ndarray:
+        future = self._loop.create_future()
+        key = (worker_id, sequence_id)
+        with self._lock:
+            self._pending[key] = future
+        self._input.put((worker_id, sequence_id, sequence, {"mean_pool": mean_pool}))
+        return await future
+
+    def stop(self) -> None:
+        self._stopping = True
+        self._thread.join(timeout=2.0)
+
+    def _reader(self) -> None:
+        while not self._stopping:
+            try:
+                payload = self._output.get(timeout=0.5)
+                for worker_id, sequence_id, emb in payload:
+                    key = (worker_id, sequence_id)
+                    if self._loop.is_closed():
+                        return
+                    self._loop.call_soon_threadsafe(self._resolve_future, key, emb)
+            except Exception:
+                if self._stopping or self._loop.is_closed():
+                    return
+                continue
+
+    def _resolve_future(self, key: Tuple[str, str], emb: np.ndarray) -> None:
+        with self._lock:
+            future = self._pending.pop(key, None)
+        if future is not None and not future.done():
+            future.set_result(emb)
 
 
 # ===========================================================================
@@ -192,58 +242,33 @@ def _fetch_seq(accessor: TwoBitAccessor, chrom: str, start: int, end: int,
 
 
 # ===========================================================================
-# RNA-FM + PCA windowed embeddings
+# Async windowed embeddings via GPU executor
 # ===========================================================================
 
-def get_window_embeddings(
+async def _embed_island_windows(
     seq: str,
-    rna_fm_model,
-    batch_converter,
-    padding_idx: int,
-    device: str,
-    pca_model: Dict,
+    gpu: GPUClient,
+    job_id: str,
+    island_id: str,
     config: IslandAlignmentConfig = DEFAULT_CONFIG,
 ) -> List[np.ndarray]:
-    """Slide windows over sequence, embed each, apply PCA."""
-    import torch
+    """Slide windows over sequence, embed each via GPU executor (per-token PCA).
 
+    Returns list of (L, 16) arrays — one per window — suitable for
+    character-level MMD computation (NOT mean-pooled).
+    """
     seq_len = len(seq)
     if seq_len < config.window_size:
-        # Embed full sequence
-        data = [("seq", seq.upper().replace("T", "U"))]
-        _, _, tokens = batch_converter(data)
-        tokens = tokens.to(device)
-        with torch.no_grad():
-            reps = rna_fm_model(tokens, repr_layers=[12])["representations"][12]
-            length = int((tokens[0] != padding_idx).sum().item())
-            if length <= 2:
-                raw_emb = np.zeros((1, reps.shape[-1]), dtype=np.float32)
-            else:
-                raw_emb = reps[0, 1:length - 1, :].cpu().numpy().astype(np.float32)
-        return [apply_pca(raw_emb, pca_model)]
+        emb = await gpu.embed(job_id, f"{island_id}:full", seq, mean_pool=False)
+        return [emb]
 
-    # Slide windows
     windows = [seq[s:s + config.window_size]
                for s in range(0, seq_len - config.window_size + 1, config.stride)]
 
-    all_pca = []
-    for i in range(0, len(windows), config.batch_size):
-        batch = windows[i:i + config.batch_size]
-        data = [(f"s{j}", s.upper().replace("T", "U")) for j, s in enumerate(batch)]
-        _, _, tokens = batch_converter(data)
-        tokens = tokens.to(device)
-
-        with torch.no_grad():
-            reps = rna_fm_model(tokens, repr_layers=[12])["representations"][12]
-            for b in range(reps.shape[0]):
-                length = int((tokens[b] != padding_idx).sum().item())
-                if length <= 2:
-                    raw_emb = np.zeros((1, reps.shape[-1]), dtype=np.float32)
-                else:
-                    raw_emb = reps[b, 1:length - 1, :].cpu().numpy().astype(np.float32)
-                all_pca.append(apply_pca(raw_emb, pca_model))
-
-    return all_pca
+    tasks = [gpu.embed(job_id, f"{island_id}:w{i}", w, mean_pool=False)
+             for i, w in enumerate(windows)]
+    results = await asyncio.gather(*tasks)
+    return list(results)
 
 
 # ===========================================================================
@@ -563,11 +588,7 @@ async def _process_job(
     query_islands_data: Dict,
     ref_acc: TwoBitAccessor,
     query_acc: TwoBitAccessor,
-    rna_fm_model,
-    batch_converter,
-    padding_idx: int,
-    device: str,
-    pca_model: Dict,
+    gpu: GPUClient,
     config: IslandAlignmentConfig = DEFAULT_CONFIG,
 ) -> List[Dict]:
     """Process a single island alignment job."""
@@ -600,15 +621,14 @@ async def _process_job(
     q_seqs = [_fetch_seq(query_acc, i["chrom"], i["start"], i["end"],
                          i["strand"]) for i in q_islands]
 
-    # Compute window embeddings
-    ref_win_embs = [get_window_embeddings(s, rna_fm_model, batch_converter,
-                                          padding_idx, device, pca_model,
-                                          config)
-                    for s in ref_seqs]
-    q_win_embs = [get_window_embeddings(s, rna_fm_model, batch_converter,
-                                        padding_idx, device, pca_model,
-                                        config)
-                  for s in q_seqs]
+    # Compute window embeddings via GPU executor (per-token PCA, not mean-pooled)
+    ref_embed_tasks = [_embed_island_windows(s, gpu, gene_id, f"R{ri}", config)
+                       for ri, s in enumerate(ref_seqs)]
+    q_embed_tasks = [_embed_island_windows(s, gpu, gene_id, f"Q{qi}", config)
+                     for qi, s in enumerate(q_seqs)]
+    all_embs = await asyncio.gather(*ref_embed_tasks, *q_embed_tasks)
+    ref_win_embs = list(all_embs[:n_ref])
+    q_win_embs = list(all_embs[n_ref:])
 
     # Phase 1: Positional probes
     probe_pairs = _get_probe_pairs(n_ref, n_q, config)
@@ -669,8 +689,6 @@ async def _process_job(
 
     # Build output rows
     rows = []
-    max_ch = max((len(sw_paths.get((h[0], h[1]), [])) for h in hybrid),
-                 default=1)
 
     for ri, qi, typ, mmd_val, run_len in hybrid:
         ri_isl = ref_islands[ri]
@@ -702,29 +720,143 @@ async def _process_job(
             "diag_mmd": f"{mmd_val:.4f}",
         }
 
-        for ci in range(max_ch):
-            if ci < len(paths) and paths[ci]:
+        chains = []
+        for ci in range(len(paths)):
+            if paths[ci]:
                 rs, re = get_matched_region_nt(paths[ci], side=0, config=config)
                 re = min(re, len(ref_seqs[ri]))
                 qs, qe = get_matched_region_nt(paths[ci], side=1, config=config)
                 qe = min(qe, len(q_seqs[qi]))
                 pmmd = np.mean([mmd_matrices[(ri, qi)][p[0], p[1]]
                                 for p in paths[ci]])
-                row[f"chain{ci + 1}_ref_from"] = rs
-                row[f"chain{ci + 1}_ref_to"] = re
-                row[f"chain{ci + 1}_q_from"] = qs
-                row[f"chain{ci + 1}_q_to"] = qe
-                row[f"chain{ci + 1}_mmd"] = f"{pmmd:.4f}"
-            else:
-                row[f"chain{ci + 1}_ref_from"] = ""
-                row[f"chain{ci + 1}_ref_to"] = ""
-                row[f"chain{ci + 1}_q_from"] = ""
-                row[f"chain{ci + 1}_q_to"] = ""
-                row[f"chain{ci + 1}_mmd"] = ""
+                chains.append({
+                    "ref_from": int(rs),
+                    "ref_to": int(re),
+                    "q_from": int(qs),
+                    "q_to": int(qe),
+                    "mmd": f"{pmmd:.4f}",
+                })
 
+        row["chains_json"] = json.dumps(chains)
         rows.append(row)
 
     return rows
+
+
+# ===========================================================================
+# SQLite intermediate storage
+# ===========================================================================
+
+def _ensure_table(conn: sqlite3.Connection, table: str, columns: Dict[str, str]) -> None:
+    cols_sql = ", ".join(f"{name} {ctype}" for name, ctype in columns.items())
+    conn.execute(f"CREATE TABLE IF NOT EXISTS {table} ({cols_sql})")
+
+    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for name, ctype in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ctype}")
+
+
+async def _sqlite_writer(queue: asyncio.Queue, sqlite_path: str) -> None:
+    conn = sqlite3.connect(sqlite_path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+
+    columns = {
+        "gene_id": "TEXT NOT NULL",
+        "ref_island": "TEXT NOT NULL",
+        "query_island": "TEXT NOT NULL",
+        "type": "TEXT",
+        "ref_chrom": "TEXT",
+        "ref_start": "INTEGER",
+        "ref_end": "INTEGER",
+        "ref_len": "INTEGER",
+        "query_chrom": "TEXT",
+        "query_start": "INTEGER",
+        "query_end": "INTEGER",
+        "query_len": "INTEGER",
+        "n_chains": "INTEGER",
+        "diag_mmd": "TEXT",
+        "chains_json": "TEXT",
+    }
+    _ensure_table(conn, "island_alignment_results", columns)
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_island_align_key "
+        "ON island_alignment_results(gene_id, ref_island, query_island)"
+    )
+
+    while True:
+        item = await queue.get()
+        if item is None:
+            break
+
+        data = item.copy()
+        placeholders = ", ".join(["?"] * len(data))
+        columns_sql = ", ".join(data.keys())
+        updates = ", ".join(f"{k}=excluded.{k}" for k in data.keys())
+        sql = (
+            f"INSERT INTO island_alignment_results ({columns_sql}) VALUES ({placeholders}) "
+            f"ON CONFLICT(gene_id, ref_island, query_island) DO UPDATE SET {updates}"
+        )
+        conn.execute(sql, tuple(data.values()))
+        conn.commit()
+
+    conn.close()
+
+
+def _export_sqlite_to_tsv(
+    sqlite_path: str,
+    tsv_path: str,
+    config: IslandAlignmentConfig,
+) -> None:
+    """Export island alignment results from SQLite to the canonical TSV format."""
+    conn = sqlite3.connect(sqlite_path)
+    cursor = conn.execute(
+        "SELECT gene_id, ref_island, query_island, type, "
+        "ref_chrom, ref_start, ref_end, ref_len, "
+        "query_chrom, query_start, query_end, query_len, "
+        "n_chains, diag_mmd, chains_json "
+        "FROM island_alignment_results ORDER BY gene_id, ref_island, query_island"
+    )
+
+    max_chains = config.sw_max_chains
+    header = [
+        "gene_id", "ref_island", "query_island", "type",
+        "ref_chrom", "ref_start", "ref_end", "ref_len",
+        "query_chrom", "query_start", "query_end", "query_len",
+        "n_chains", "diag_mmd",
+    ]
+    for ci in range(max_chains):
+        header.extend([
+            f"chain{ci + 1}_ref_from", f"chain{ci + 1}_ref_to",
+            f"chain{ci + 1}_q_from", f"chain{ci + 1}_q_to",
+            f"chain{ci + 1}_mmd",
+        ])
+
+    with open(tsv_path, "w") as f:
+        f.write("\t".join(header) + "\n")
+        for row in cursor:
+            core = [str(v) if v is not None else "" for v in row[:14]]
+            chains_json_str = row[14]
+            chains = json.loads(chains_json_str) if chains_json_str else []
+            for ci in range(max_chains):
+                if ci < len(chains):
+                    c = chains[ci]
+                    core.extend([
+                        str(c["ref_from"]), str(c["ref_to"]),
+                        str(c["q_from"]), str(c["q_to"]),
+                        str(c["mmd"]),
+                    ])
+                else:
+                    core.extend(["", "", "", "", ""])
+            f.write("\t".join(core) + "\n")
+
+    total = conn.execute("SELECT COUNT(*) FROM island_alignment_results").fetchone()[0]
+    genes = conn.execute(
+        "SELECT COUNT(DISTINCT gene_id) FROM island_alignment_results"
+    ).fetchone()[0]
+    conn.close()
+    print(f"# Exported {total} island alignment results ({genes} genes) to {tsv_path}")
 
 
 # ===========================================================================
@@ -740,6 +872,7 @@ def run_island_alignment_scheduler(
     query_islands_json_path: str,
     input_q,
     output_q,
+    sqlite_path: str,
     output_tsv_path: str,
     max_concurrent: int = 128,
     test_cap_jobs: Optional[int] = None,
@@ -748,118 +881,111 @@ def run_island_alignment_scheduler(
     """
     Run island alignment scheduler with GPU executor integration.
 
-    Args:
-        joblist_path: Path to island alignment joblist
-        ref_2bit_path: Path to reference 2bit file
-        query_2bit_path: Path to query 2bit file
-        ref_islands_json_path: Path to reference islands JSON
-        u2q_map_path: Path to ultimate-to-query mapping JSON
-        query_islands_json_path: Path to query islands JSON
-        input_q: GPU executor input queue
-        output_q: GPU executor output queue
-        output_tsv_path: Path to output TSV file
-        max_concurrent: Maximum concurrent jobs
-        test_cap_jobs: Optional cap on number of jobs for testing
-        config: Island alignment hyperparameters (uses defaults if None)
+    Uses the shared GPU executor process for RNA-FM inference (per-token PCA
+    embeddings, NOT mean-pooled) and writes results to an intermediate SQLite
+    database, then exports to TSV.
     """
     if config is None:
         config = DEFAULT_CONFIG
-    import sys
-    import os
 
-    # Load RNA-FM model
-    import torch
+    async def _run() -> None:
+        t0 = time.monotonic()
 
-    # Locate RNA-FM
-    script_dir = Path(__file__).resolve().parent
-    project_root = script_dir.parent.parent
-    rna_fm_path = str(project_root.parent / "RNA-FM")
-    if not os.path.exists(rna_fm_path):
-        rna_fm_path = "/Users/Bogdan.Kirilenko/PycharmProjects/RNA-FM"
-    if rna_fm_path not in sys.path:
-        sys.path.insert(0, rna_fm_path)
+        jobs = _load_joblist(joblist_path)
+        if test_cap_jobs:
+            jobs = jobs[:test_cap_jobs]
+            print(f"# [TEST MODE] Capped to {len(jobs)} jobs (--test-cap-jobs={test_cap_jobs})")
+        print(f"# Loaded {len(jobs)} island alignment jobs.")
+        print(f"# Island alignment workers: {max_concurrent}")
 
-    import fm
+        with open(ref_islands_json_path, "r") as f:
+            ref_data = json.load(f)
+        with open(u2q_map_path, "r") as f:
+            u_to_query = json.load(f)
+        with open(query_islands_json_path, "r") as f:
+            query_islands_data = json.load(f)
 
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif torch.backends.mps.is_available():
-        device = "mps"
+        ref_acc = TwoBitAccessor(ref_2bit_path)
+        query_acc = TwoBitAccessor(query_2bit_path)
 
-    model, alphabet = fm.pretrained.rna_fm_t12()
-    model = model.to(device).eval()
-    batch_converter = alphabet.get_batch_converter()
-    padding_idx = alphabet.padding_idx
-    pca_model = load_pca()
+        loop = asyncio.get_running_loop()
+        gpu = GPUClient(input_q, output_q, loop)
 
-    print(f"# RNA-FM loaded on {device}, PCA components={pca_model['n_components']}")
+        result_queue: asyncio.Queue = asyncio.Queue()
+        writer_task = asyncio.create_task(_sqlite_writer(result_queue, sqlite_path))
 
-    # Load data
-    jobs = _load_joblist(joblist_path)
-    if test_cap_jobs:
-        jobs = jobs[:test_cap_jobs]
+        job_queue: asyncio.Queue = asyncio.Queue()
+        total_jobs = len(jobs)
+        for job in jobs:
+            await job_queue.put(job)
+        for _ in range(max_concurrent):
+            await job_queue.put(None)
 
-    with open(ref_islands_json_path, "r") as f:
-        ref_data = json.load(f)
-    with open(u2q_map_path, "r") as f:
-        u_to_query = json.load(f)
-    with open(query_islands_json_path, "r") as f:
-        query_islands_data = json.load(f)
+        completed_counter: Dict = {"count": 0, "last_log_time": t0}
+        counter_lock = asyncio.Lock()
 
-    ref_acc = TwoBitAccessor(ref_2bit_path)
-    query_acc = TwoBitAccessor(query_2bit_path)
+        async def _worker() -> None:
+            while True:
+                job = await job_queue.get()
+                if job is None:
+                    break
 
-    print(f"# Processing {len(jobs)} island alignment jobs...")
+                try:
+                    rows = await _process_job(
+                        job, ref_data, u_to_query, query_islands_data,
+                        ref_acc, query_acc, gpu, config,
+                    )
+                    for row in rows:
+                        await result_queue.put(row)
+                except Exception as exc:
+                    print(f"# Error processing gene {job.gene_id}: {exc}")
 
-    # Determine max chains for TSV header
-    max_chains_global = config.sw_max_chains
+                async with counter_lock:
+                    completed_counter["count"] += 1
+                    completed = completed_counter["count"]
+                    current_time = time.monotonic()
+                    remaining = total_jobs - completed
+                    should_log = (
+                        completed % 50 == 0
+                        or (current_time - completed_counter["last_log_time"]) >= 30.0
+                        or completed == total_jobs
+                    )
+                    if should_log:
+                        elapsed = current_time - t0
+                        pct = (completed / total_jobs * 100) if total_jobs > 0 else 0
+                        print(
+                            f"# Island alignment: {completed}/{total_jobs} completed "
+                            f"({pct:.1f}%), {remaining} remaining (elapsed {elapsed:.1f}s)"
+                        )
+                        completed_counter["last_log_time"] = current_time
 
-    # Write TSV header
-    with open(output_tsv_path, "w") as f:
-        header = [
-            "gene_id", "ref_island", "query_island", "type",
-            "ref_chrom", "ref_start", "ref_end", "ref_len",
-            "query_chrom", "query_start", "query_end", "query_len",
-            "n_chains", "diag_mmd",
-        ]
-        for ci in range(max_chains_global):
-            header.extend([
-                f"chain{ci + 1}_ref_from", f"chain{ci + 1}_ref_to",
-                f"chain{ci + 1}_q_from", f"chain{ci + 1}_q_to",
-                f"chain{ci + 1}_mmd"
-            ])
-        f.write("\t".join(header) + "\n")
+        workers = [asyncio.create_task(_worker()) for _ in range(max_concurrent)]
+        await asyncio.gather(*workers)
 
-    # Process jobs
-    async def _run():
-        semaphore = asyncio.Semaphore(max_concurrent)
-        lock = threading.Lock()
-        completed = 0
-        total = len(jobs)
+        await result_queue.put(None)
+        await writer_task
 
-        async def _worker(job):
-            nonlocal completed
-            async with semaphore:
-                rows = await _process_job(
-                    job, ref_data, u_to_query, query_islands_data,
-                    ref_acc, query_acc, model, batch_converter,
-                    padding_idx, device, pca_model, config,
-                )
+        gpu.stop()
 
-                with lock:
-                    with open(output_tsv_path, "a") as f:
-                        for row in rows:
-                            # Ensure all columns exist
-                            row_vals = [str(row.get(h, "")) for h in header]
-                            f.write("\t".join(row_vals) + "\n")
+        elapsed_total = time.monotonic() - t0
+        print(f"# Island alignment scheduler finished in {elapsed_total:.1f}s.")
 
-                    completed += 1
-                    if completed % 10 == 0 or completed == total:
-                        print(f"# Island alignment progress: {completed}/{total} jobs completed")
+        # Print summary
+        conn = sqlite3.connect(sqlite_path)
+        total_rows = conn.execute(
+            "SELECT COUNT(*) FROM island_alignment_results"
+        ).fetchone()[0]
+        gene_count = conn.execute(
+            "SELECT COUNT(DISTINCT gene_id) FROM island_alignment_results"
+        ).fetchone()[0]
+        conn.close()
+        print(
+            f"# Island alignment summary: {total_rows} island-pair results "
+            f"across {gene_count} genes"
+        )
 
-        tasks = [_worker(job) for job in jobs]
-        await asyncio.gather(*tasks)
+        # Export to TSV
+        _export_sqlite_to_tsv(sqlite_path, output_tsv_path, config)
 
     asyncio.run(_run())
 
