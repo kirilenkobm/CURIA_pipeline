@@ -941,6 +941,13 @@ def run_island_alignment_scheduler(
         thread_name_prefix="island_mmd",
     )
 
+    # Limit async workers so GPU and CPU phases overlap as a pipeline.
+    # With too many async workers (e.g. 128), all GPU work is front-loaded
+    # and the GPU sits idle while 128 jobs queue for 12 CPU slots.
+    # With ~3x CPU threads, there's always a mix of workers embedding (GPU)
+    # and computing MMD/SW (CPU) simultaneously.
+    n_async_workers = min(max_concurrent, n_cpu_workers * 3)
+
     async def _run() -> None:
         t0 = time.monotonic()
 
@@ -949,7 +956,7 @@ def run_island_alignment_scheduler(
             jobs = jobs[:test_cap_jobs]
             print(f"# [TEST MODE] Capped to {len(jobs)} jobs (--test-cap-jobs={test_cap_jobs})")
         print(f"# Loaded {len(jobs)} island alignment jobs.")
-        print(f"# Island alignment workers: {max_concurrent} async, {n_cpu_workers} CPU threads")
+        print(f"# Island alignment: {n_async_workers} async workers, {n_cpu_workers} CPU threads")
 
         with open(ref_islands_json_path, "r") as f:
             ref_data = json.load(f)
@@ -971,7 +978,7 @@ def run_island_alignment_scheduler(
         total_jobs = len(jobs)
         for job in jobs:
             await job_queue.put(job)
-        for _ in range(max_concurrent):
+        for _ in range(n_async_workers):
             await job_queue.put(None)
 
         completed_counter: Dict = {"count": 0, "last_log_time": t0}
@@ -1013,7 +1020,7 @@ def run_island_alignment_scheduler(
                         )
                         completed_counter["last_log_time"] = current_time
 
-        workers = [asyncio.create_task(_worker()) for _ in range(max_concurrent)]
+        workers = [asyncio.create_task(_worker()) for _ in range(n_async_workers)]
         await asyncio.gather(*workers)
 
         await result_queue.put(None)

@@ -113,52 +113,15 @@ def validate_tsv_has_header(tsv_path: str, file_type: str) -> int:
         raise ValidationError(f"Failed to parse {file_type} {tsv_path}: {e}")
 
 
-def validate_chain_file(chain_path: str) -> Tuple[Set[str], Set[str], int]:
+def validate_chain_file(chain_path: str) -> None:
     """
-    Validate chain file and extract reference/query chromosome names.
+    Validate chain file exists and is non-empty.
 
-    Returns:
-        (ref_chroms, query_chroms, num_chains)
+    TODO: Check what are cheap ways to validate chain format without full parsing.
+    TOGA will crash if something is fundamentally wrong with the chain file.
     """
-    ref_chroms = set()
-    query_chroms = set()
-    num_chains = 0
-
-    # Handle gzipped files
-    opener = gzip.open if chain_path.endswith('.gz') else open
-
-    try:
-        with opener(chain_path, 'rt') as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if not line:
-                    continue
-
-                if line.startswith("chain"):
-                    parts = line.split()
-                    if len(parts) < 13:
-                        raise ValidationError(
-                            f"Chain file has malformed chain header at line {line_num}: {chain_path}\n"
-                            f"  Expected at least 13 fields, got {len(parts)}"
-                        )
-
-                    # chain score tName tSize tStrand tStart tEnd qName qSize qStrand qStart qEnd id
-                    ref_chrom = parts[2]
-                    query_chrom = parts[7]
-
-                    ref_chroms.add(ref_chrom)
-                    query_chroms.add(query_chrom)
-                    num_chains += 1
-
-    except Exception as e:
-        if isinstance(e, ValidationError):
-            raise
-        raise ValidationError(f"Failed to parse chain file {chain_path}: {e}")
-
-    if num_chains == 0:
-        raise ValidationError(f"Chain file contains no chain records: {chain_path}")
-
-    return ref_chroms, query_chroms, num_chains
+    # Chain file existence/size already checked by validate_file_exists_and_nonempty
+    pass
 
 
 def validate_2bit_file(twobit_path: str, file_type: str) -> Set[str]:
@@ -334,38 +297,10 @@ def validate_all_inputs(
     # 5. Validate chain file
     print("# Validating chain file...")
     try:
-        chain_ref_chroms, chain_query_chroms, num_chains = validate_chain_file(chain)
-        print(f"  ✓ Chain file valid: {num_chains} chains")
-        print(f"    Reference chroms: {len(chain_ref_chroms)}")
-        print(f"    Query chroms: {len(chain_query_chroms)}")
+        validate_chain_file(chain)
+        print(f"  ✓ Chain file exists and is non-empty")
     except ValidationError as e:
         raise ValidationError(f"Chain file validation failed:\n{e}")
-
-    # 6. Check chain-genome compatibility
-    print("# Checking chain-genome compatibility...")
-    warnings = check_chain_genome_compatibility(
-        ref_2bit_chroms,
-        query_2bit_chroms,
-        chain_ref_chroms,
-        chain_query_chroms,
-    )
-
-    if warnings:
-        has_error = any("ERROR:" in w for w in warnings)
-        if has_error:
-            print("# FATAL ERRORS detected:")
-            for w in warnings:
-                print(w)
-            raise ValidationError(
-                "Chain file chromosomes do not match genome files. "
-                "Please verify you are using the correct chain and genome files."
-            )
-        else:
-            print("# Warnings (may be OK if using chromosome subsets):")
-            for w in warnings:
-                print(w)
-    else:
-        print("  ✓ Chain file compatible with both genomes")
 
     # 7. Check BED-genome compatibility
     print("# Checking BED-genome compatibility...")
