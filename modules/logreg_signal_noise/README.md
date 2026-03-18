@@ -35,8 +35,7 @@ pca_model = load_pca()
 # Score embeddings (shape: N x 640)
 probs, status = score_embeddings(
     embeddings_640,
-    model=logreg_model,
-    pca_model=pca_model
+    model=logreg_model
 )
 
 # probs: probability of being "proper RNA" (0-1)

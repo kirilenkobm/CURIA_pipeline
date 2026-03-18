@@ -14,7 +14,7 @@ def load_logreg_model(model_path='logreg_signal_noise/logreg_noise_model.pkl'):
         raise FileNotFoundError(f"Model file not found at {model_path}. Please run train_logreg.py first.")
     return joblib.load(model_path)
 
-def score_embeddings(embeddings_16, model=None, pca_model=None):
+def score_embeddings(embeddings_16, model=None):
     """
     Score PCA-reduced RNA-FM embeddings using the Logistic Regression model.
 
@@ -24,7 +24,6 @@ def score_embeddings(embeddings_16, model=None, pca_model=None):
     Args:
         embeddings_16: numpy array of shape (N, 16) - already PCA-reduced
         model: pre-loaded LogisticRegression model (optional)
-        pca_model: DEPRECATED - kept for API compatibility, not used
 
     Returns:
         probs: probability of being "proper RNA"

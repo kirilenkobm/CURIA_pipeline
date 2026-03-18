@@ -303,8 +303,7 @@ async def _process_query_island_scan(
     query_accessor: TwoBitAccessor,
     gpu: GPUClient,
     logreg_model,
-    pca_model,
-    window_size: int = 72,
+        window_size: int = 72,
     stride: int = 16,
     smooth_window: int = 5,
     prob_threshold: float = 0.25,
@@ -352,7 +351,7 @@ async def _process_query_island_scan(
     embeddings = np.stack(embeddings, axis=0)
 
     # Apply LogReg model (via PCA)
-    probs, _ = score_embeddings(embeddings, model=logreg_model, pca_model=pca_model)
+    probs, _ = score_embeddings(embeddings, model=logreg_model)
 
     # Smooth probabilities
     probs_smooth = smooth_signal(probs, smooth_window)
@@ -397,7 +396,6 @@ async def _worker(
     query_accessor: TwoBitAccessor,
     gpu: GPUClient,
     logreg_model,
-    pca_model,
     window_size: int,
     stride: int,
     smooth_window: int,
@@ -425,7 +423,6 @@ async def _worker(
                 query_accessor,
                 gpu,
                 logreg_model,
-                pca_model,
                 window_size,
                 stride,
                 smooth_window,
@@ -468,10 +465,7 @@ def run_query_islands_scanner(
         print(f"# Loaded {len(jobs)} query region island scanning jobs.")
         print(f"# Query islands scanner workers: {max_concurrent}")
 
-        # Load model (PCA not needed - GPU executor already applies it)
         logreg_model = load_logreg_model(logreg_model_path)
-        pca_model = None  # Not used - embeddings are already PCA-reduced by GPU executor
-
         query_accessor = TwoBitAccessor(query_2bit_path)
 
         loop = asyncio.get_running_loop()
@@ -495,7 +489,6 @@ def run_query_islands_scanner(
                     query_accessor,
                     gpu,
                     logreg_model,
-                    pca_model,
                     window_size,
                     stride,
                     smooth_window,

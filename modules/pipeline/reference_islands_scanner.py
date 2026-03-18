@@ -377,7 +377,7 @@ async def _process_transcript(
     embeddings = np.stack(embeddings, axis=0)
 
     # Apply LogReg model (expects 16-dim PCA-reduced embeddings)
-    probs, _ = score_embeddings(embeddings, model=logreg_model, pca_model=None)
+    probs, _ = score_embeddings(embeddings, model=logreg_model)
 
     # Smooth probabilities
     probs_smooth = smooth_signal(probs, smooth_window)

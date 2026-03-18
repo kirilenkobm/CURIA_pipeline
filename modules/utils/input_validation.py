@@ -170,7 +170,7 @@ def validate_2bit_file(twobit_path: str, file_type: str) -> Set[str]:
     """
     try:
         accessor = TwoBitAccessor(twobit_path)
-        chroms = set(accessor.sequence_names())
+        chroms = set(accessor.chrom_sizes())
 
         if len(chroms) == 0:
             raise ValidationError(f"{file_type} contains no sequences: {twobit_path}")
