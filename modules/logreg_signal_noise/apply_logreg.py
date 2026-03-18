@@ -1,18 +1,31 @@
+import json
 import numpy as np
-import joblib
 import os
 import sys
+from sklearn.linear_model import LogisticRegression
 
-# Add project root to path to import local modules
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-def load_logreg_model(model_path='logreg_signal_noise/logreg_noise_model.pkl'):
-    """Load the trained Logistic Regression model."""
+
+def load_logreg_model(model_path='logreg_signal_noise/logreg_noise_model.json'):
+    """Load the trained Logistic Regression model from JSON and reconstruct the sklearn object."""
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model file not found at {model_path}. Please run train_logreg.py first.")
-    return joblib.load(model_path)
+    with open(model_path, "r") as f:
+        data = json.load(f)
+    required = {"coefficients", "intercept", "classes"}
+    missing = required - set(data.keys())
+    if missing:
+        raise ValueError(f"Missing keys in model JSON: {sorted(missing)}")
+
+    model = LogisticRegression()
+    model.coef_ = np.array([data["coefficients"]])
+    model.intercept_ = np.array([data["intercept"]])
+    model.classes_ = np.array(data["classes"])
+    return model
+
 
 def score_embeddings(embeddings_16, model=None):
     """
@@ -27,27 +40,17 @@ def score_embeddings(embeddings_16, model=None):
 
     Returns:
         probs: probability of being "proper RNA"
-        status: 'trash' if prob < 0.5 (noise), 'keep' if prob >= 0.5 (proper)
+        status: 'noise' if prob < 0.5, 'signal' if prob >= 0.5
     """
     if model is None:
         model = load_logreg_model()
 
-    # Embeddings are already PCA-reduced by GPU executor, use directly
-    X16 = embeddings_16
-
-    # Get probabilities for class 1 (proper RNA)
-    probs = model.predict_proba(X16)[:, 1]
-
-    # Decision: 1 (proper) -> 'keep', 0 (noise) -> 'trash'
-    # By default, LogisticRegression.predict uses 0.5 threshold
-    preds = model.predict(X16)
-    status = np.where(preds == 1, 'keep', 'trash')
+    probs = model.predict_proba(embeddings_16)[:, 1]
+    preds = model.predict(embeddings_16)
+    status = np.where(preds == 1, 'signal', 'noise')
 
     return probs, status
 
+
 if __name__ == "__main__":
-    # Example usage (requires embeddings)
     print("LogReg model applier script.")
-    # test_embs = np.random.rand(5, 640)
-    # p, s = score_embeddings(test_embs)
-    # print(p, s)

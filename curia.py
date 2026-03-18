@@ -206,7 +206,7 @@ def run_reference_islands_step(
         paths.intermediate_sqlite_dir.mkdir(parents=True, exist_ok=True)
         ref_islands_json.parent.mkdir(parents=True, exist_ok=True)
 
-        logreg_model_path = MODULES_DIR / "logreg_signal_noise" / "logreg_noise_model.pkl"
+        logreg_model_path = MODULES_DIR / "logreg_signal_noise" / "logreg_noise_model.json"
         run_reference_islands_scanner(
             str(ref_islands_joblist),
             str(args.ref_2bit),
@@ -387,7 +387,7 @@ def main():
                 input_q,
                 output_q,
                 str(paths.query_islands_sqlite),
-                str(MODULES_DIR / "logreg_signal_noise" / "logreg_noise_model.pkl"),
+                str(MODULES_DIR / "logreg_signal_noise" / "logreg_noise_model.json"),
                 max_concurrent=args.cpu_max_workers,
                 output_json_path=str(paths.query_islands_json),
             )

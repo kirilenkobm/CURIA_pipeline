@@ -6,7 +6,7 @@ This module provides a trained logistic regression model for classifying RNA-FM 
 
 - `train_logreg.py` - Script to train the logistic regression model on labeled data
 - `apply_logreg.py` - Functions to apply the trained model to RNA-FM embeddings
-- `logreg_noise_model.pkl` - Trained logistic regression model (binary classifier)
+- `logreg_noise_model.json` - Trained logistic regression model (binary classifier)
 
 ## Usage
 
@@ -18,7 +18,7 @@ from logreg_signal_noise.train_logreg import train_model
 # Assumes you have labeled training data in the specified format
 train_model(
     data_path='path/to/train.npz',
-    model_path='logreg_noise_model.pkl'
+    model_path='logreg_noise_model.json'
 )
 ```
 
@@ -29,7 +29,7 @@ from logreg_signal_noise.apply_logreg import score_embeddings, load_logreg_model
 from pca.apply_pca import load_pca
 
 # Load models
-logreg_model = load_logreg_model('logreg_noise_model.pkl')
+logreg_model = load_logreg_model('logreg_noise_model.json')
 pca_model = load_pca()
 
 # Score embeddings (shape: N x 640)
@@ -39,7 +39,7 @@ probs, status = score_embeddings(
 )
 
 # probs: probability of being "proper RNA" (0-1)
-# status: 'keep' (proper RNA) or 'trash' (noise)
+# status: 'signal' (proper RNA) or 'noise'
 ```
 
 ## Model Details
