@@ -15,6 +15,6 @@ dependencies:
   - llvm-openmp  # macOS OpenMP fix
 
   - pip:
-      - pyrion >= 0.3.0  # instead of biopython
+      - pyrion >= 0.3.1  # instead of biopython
       - torch>=1.9
       - ptflops>=0.6  # RNA-FM runtime dependencies

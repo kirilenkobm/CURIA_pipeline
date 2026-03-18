@@ -17,6 +17,8 @@ GPU_EXECUTOR_DIR = MODULES_DIR / "GPU_executor"
 RNA_TOGA_DIR = MODULES_DIR / "rna_toga"
 UTILS_DIR = MODULES_DIR / "utils"
 
+from pyrion import read_chain_file
+
 from modules.GPU_executor.gpu_executor import ExecutorConfig, run_gpu_executor
 from modules.utils.chrom_sizes import write_chrom_sizes_from_2bit
 from modules.utils.output_paths import OutputPaths
@@ -26,7 +28,7 @@ from modules.converters.island_alignment_bed import write_island_alignment_beds
 from modules.converters.islands_bed import write_reference_islands_bed, write_query_islands_bed
 from modules.pipeline.toga_postprocess import write_rna_orthologous_regions
 from modules.pipeline.short_ncrna import write_short_ncrna_joblist, run_short_ncrna_scheduler
-from modules.pipeline.merge_query_regions import merge_query_regions
+from modules.pipeline.reference_islands_liftover import liftover_reference_islands
 from modules.pipeline.query_islands_scanner import write_query_islands_joblist, run_query_islands_scanner
 from modules.pipeline.reference_islands_scanner import write_reference_islands_joblist, run_reference_islands_scanner
 from modules.pipeline.island_alignment import (
@@ -334,17 +336,30 @@ def main():
                 str(paths.reference_islands_bed),
             )
 
-        # Merge query regions
+        # Load genome alignment chains — reused across pipeline steps.
+        # Currently TOGA runs as a subprocess and loads its own copy;
+        # TODO: refactor TOGA to accept pre-loaded chains and avoid double-loading.
+        print("# Loading genome alignment chains...")
+        genome_chains = read_chain_file(args.chain, 25_000)
+        print(f"# Loaded {len(genome_chains)} chains")
+
+        # Step 2.5: Liftover reference islands → targeted query regions
+        # Replaces the legacy merge_query_regions (full transcript → full query locus)
+        # with flanked island liftover for dramatically reduced scanning workload
         if args.skip_completed and paths.query_regions_clusters.exists():
-            print("# [SKIP] Query regions clusters exist, skipping merge.")
+            print("# [SKIP] Query regions clusters exist, skipping island liftover.")
         else:
-            print("# Preparing merged long ncRNA query regions...")
-            merge_query_regions(
-                paths.rna_toga_regions,
-                paths.short_joblist,
-                paths.long_jobs,
-                paths.query_regions_clusters,
+            print("# === Step 2.5: Liftover reference islands to query regions ===")
+            liftover_reference_islands(
+                chain_path=args.chain,
+                ref_islands_json_path=str(ref_islands_json),
+                rna_regions_path=paths.rna_toga_regions,
+                short_joblist_path=paths.short_joblist,
+                clusters_json_path=paths.query_regions_clusters,
                 union_to_query_path=paths.union_to_query,
+                out_jobs_path=paths.long_jobs,
+                island_to_query_path=paths.island_to_query_regions,
+                chains=genome_chains,
             )
 
         # Write short ncRNA BED (only if we ran the scheduler above)

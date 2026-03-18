@@ -126,5 +126,9 @@ class OutputPaths:
         return self.intermediate_sqlite_dir / "island_alignment_results.sqlite"
 
     @property
+    def island_to_query_regions(self) -> Path:
+        return self.mappings_dir / "island_to_query_regions.json"
+
+    @property
     def query_islands_bed(self) -> Path:
         return self.intermediate_bed_dir / "query_islands.bed"
