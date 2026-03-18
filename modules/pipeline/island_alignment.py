@@ -14,8 +14,10 @@ Outputs a TSV summary of matched regions per island pair.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import csv
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -578,57 +580,26 @@ def build_hybrid_chain(sw_chain, sw_results, pair_results, n_ref, n_q,
 
 
 # ===========================================================================
-# Async job processor
+# CPU-bound alignment phase (runs in thread pool)
 # ===========================================================================
 
-async def _process_job(
-    job: IslandAlignmentJob,
-    ref_data: Dict,
-    u_to_query: Dict,
-    query_islands_data: Dict,
-    ref_acc: TwoBitAccessor,
-    query_acc: TwoBitAccessor,
-    gpu: GPUClient,
-    config: IslandAlignmentConfig = DEFAULT_CONFIG,
+def _compute_island_alignments(
+    gene_id: str,
+    ref_islands: List[Dict],
+    q_islands: List[Dict],
+    ref_seqs: List[str],
+    q_seqs: List[str],
+    ref_win_embs: List[List[np.ndarray]],
+    q_win_embs: List[List[np.ndarray]],
+    config: IslandAlignmentConfig,
 ) -> List[Dict]:
-    """Process a single island alignment job."""
-    gene_id = job.gene_id
+    """CPU-bound phase: MMD matrices, SW alignment, chain DP, row building.
 
-    # Select islands
-    ref_islands = sorted(
-        [i for i in ref_data[gene_id]["islands"]
-         if i["end"] - i["start"] >= config.min_island_len],
-        key=lambda x: x["start"],
-    )
-
-    qr_ids = list(set(u_to_query.get(gene_id, [])))
-    q_islands = sorted(
-        [isl for qr in qr_ids
-         for isl in query_islands_data.get(qr, [])
-         if isl["end"] - isl["start"] >= config.min_island_len],
-        key=lambda x: x["start"],
-    )
-
+    Runs in a thread pool so the event loop stays responsive and multiple
+    jobs can compute in parallel (numpy releases the GIL).
+    """
     n_ref = len(ref_islands)
     n_q = len(q_islands)
-
-    if n_ref == 0 or n_q == 0:
-        return []
-
-    # Extract sequences
-    ref_seqs = [_fetch_seq(ref_acc, i["chrom"], i["start"], i["end"],
-                           i["strand"]) for i in ref_islands]
-    q_seqs = [_fetch_seq(query_acc, i["chrom"], i["start"], i["end"],
-                         i["strand"]) for i in q_islands]
-
-    # Compute window embeddings via GPU executor (per-token PCA, not mean-pooled)
-    ref_embed_tasks = [_embed_island_windows(s, gpu, gene_id, f"R{ri}", config)
-                       for ri, s in enumerate(ref_seqs)]
-    q_embed_tasks = [_embed_island_windows(s, gpu, gene_id, f"Q{qi}", config)
-                     for qi, s in enumerate(q_seqs)]
-    all_embs = await asyncio.gather(*ref_embed_tasks, *q_embed_tasks)
-    ref_win_embs = list(all_embs[:n_ref])
-    q_win_embs = list(all_embs[n_ref:])
 
     # Phase 1: Positional probes
     probe_pairs = _get_probe_pairs(n_ref, n_q, config)
@@ -740,6 +711,76 @@ async def _process_job(
         row["chains_json"] = json.dumps(chains)
         rows.append(row)
 
+    return rows
+
+
+# ===========================================================================
+# Async job processor
+# ===========================================================================
+
+async def _process_job(
+    job: IslandAlignmentJob,
+    ref_data: Dict,
+    u_to_query: Dict,
+    query_islands_data: Dict,
+    ref_acc: TwoBitAccessor,
+    query_acc: TwoBitAccessor,
+    gpu: GPUClient,
+    config: IslandAlignmentConfig = DEFAULT_CONFIG,
+    cpu_pool: concurrent.futures.ThreadPoolExecutor = None,
+) -> List[Dict]:
+    """Process a single island alignment job.
+
+    The async phase (embedding) runs on the event loop via GPUClient.
+    The CPU-bound phase (MMD, SW, chain DP) is offloaded to a thread pool
+    so the event loop stays responsive for other workers' embedding requests.
+    """
+    gene_id = job.gene_id
+
+    # Select islands
+    ref_islands = sorted(
+        [i for i in ref_data[gene_id]["islands"]
+         if i["end"] - i["start"] >= config.min_island_len],
+        key=lambda x: x["start"],
+    )
+
+    qr_ids = list(set(u_to_query.get(gene_id, [])))
+    q_islands = sorted(
+        [isl for qr in qr_ids
+         for isl in query_islands_data.get(qr, [])
+         if isl["end"] - isl["start"] >= config.min_island_len],
+        key=lambda x: x["start"],
+    )
+
+    n_ref = len(ref_islands)
+    n_q = len(q_islands)
+
+    if n_ref == 0 or n_q == 0:
+        return []
+
+    # Extract sequences
+    ref_seqs = [_fetch_seq(ref_acc, i["chrom"], i["start"], i["end"],
+                           i["strand"]) for i in ref_islands]
+    q_seqs = [_fetch_seq(query_acc, i["chrom"], i["start"], i["end"],
+                         i["strand"]) for i in q_islands]
+
+    # Async phase: compute window embeddings via GPU executor
+    ref_embed_tasks = [_embed_island_windows(s, gpu, gene_id, f"R{ri}", config)
+                       for ri, s in enumerate(ref_seqs)]
+    q_embed_tasks = [_embed_island_windows(s, gpu, gene_id, f"Q{qi}", config)
+                     for qi, s in enumerate(q_seqs)]
+    all_embs = await asyncio.gather(*ref_embed_tasks, *q_embed_tasks)
+    ref_win_embs = list(all_embs[:n_ref])
+    q_win_embs = list(all_embs[n_ref:])
+
+    # CPU-bound phase: offload to thread pool (numpy releases the GIL)
+    loop = asyncio.get_running_loop()
+    rows = await loop.run_in_executor(
+        cpu_pool,
+        _compute_island_alignments,
+        gene_id, ref_islands, q_islands, ref_seqs, q_seqs,
+        ref_win_embs, q_win_embs, config,
+    )
     return rows
 
 
@@ -888,6 +929,18 @@ def run_island_alignment_scheduler(
     if config is None:
         config = DEFAULT_CONFIG
 
+    # Pin numpy/BLAS to single-threaded: we handle parallelism ourselves via
+    # the thread pool, so internal threading would cause oversubscription.
+    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS",
+                "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        os.environ.setdefault(var, "1")
+
+    n_cpu_workers = max(1, os.cpu_count() or 4)
+    cpu_pool = concurrent.futures.ThreadPoolExecutor(
+        max_workers=n_cpu_workers,
+        thread_name_prefix="island_mmd",
+    )
+
     async def _run() -> None:
         t0 = time.monotonic()
 
@@ -896,7 +949,7 @@ def run_island_alignment_scheduler(
             jobs = jobs[:test_cap_jobs]
             print(f"# [TEST MODE] Capped to {len(jobs)} jobs (--test-cap-jobs={test_cap_jobs})")
         print(f"# Loaded {len(jobs)} island alignment jobs.")
-        print(f"# Island alignment workers: {max_concurrent}")
+        print(f"# Island alignment workers: {max_concurrent} async, {n_cpu_workers} CPU threads")
 
         with open(ref_islands_json_path, "r") as f:
             ref_data = json.load(f)
@@ -934,6 +987,7 @@ def run_island_alignment_scheduler(
                     rows = await _process_job(
                         job, ref_data, u_to_query, query_islands_data,
                         ref_acc, query_acc, gpu, config,
+                        cpu_pool,
                     )
                     for row in rows:
                         await result_queue.put(row)
@@ -988,5 +1042,6 @@ def run_island_alignment_scheduler(
         _export_sqlite_to_tsv(sqlite_path, output_tsv_path, config)
 
     asyncio.run(_run())
+    cpu_pool.shutdown(wait=False)
 
     print(f"# Island alignment completed. Results written to {output_tsv_path}")
