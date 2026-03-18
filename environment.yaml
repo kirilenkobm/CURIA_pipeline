@@ -5,29 +5,17 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - python=3.12  # Using 3.12 as it works for both modules
+  - python=3.12
   - pip
-  # Shared dependencies with compatible versions
   - numpy>=1.20
-  - pandas>=1.3  # probably not needed, TODO: check
-  - scikit-learn>=0.24  # probably not needed, TODO: check
-  # RNA-FM specific
-  - scipy>=1.7  # probably not needed, TODO: check
-  - matplotlib>=3.4
-  - pillow>=8.0
-  - biopython>=1.79  # probably not needed, TODO: check
+  - scipy>=1.7
+  - scikit-learn>=0.24
+  - joblib
+  - pandas>=1.3
   - tqdm>=4.60
-  - pyyaml>=5.4  # probably not needed, TODO: check
-  # Fix for OpenMP conflict on macOS
-  - llvm-openmp
+  - llvm-openmp  # macOS OpenMP fix
+
   - pip:
-      - pyrion >= 0.3.0
-      - torch>=1.9  # probably not needed, TODO: check
-      - hydra-core>=1.0  # probably not needed, TODO: check
-      - omegaconf>=2.0  # probably not needed, TODO: check
-      - pytorch-ignite>=0.4  # probably not needed, TODO: check
-      - yacs>=0.1.8  # probably not needed, TODO: check
-      - openpyxl>=3.0  # probably not needed, TODO: check
-      - tensorboard>=2.6  # probably not needed, TODO: check
-      - tabulate>=0.8  # probably not needed, TODO: check
-      - ptflops>=0.6  # probably not needed, TODO: check
+      - pyrion >= 0.3.0  # instead of biopython
+      - torch>=1.9
+      - ptflops>=0.6  # RNA-FM runtime dependencies
