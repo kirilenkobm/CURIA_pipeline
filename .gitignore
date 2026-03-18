@@ -84,6 +84,7 @@ sample_output/
 sample_preprocessing_reference/
 quick_test/
 smoke_test_output/
+hg38_vs_mm39/
 big_test/
 todo.txt
 draft/

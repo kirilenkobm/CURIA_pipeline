@@ -15,7 +15,7 @@ conda env create -f environment.yaml
 conda activate CURIA_pipeline
 ```
 
-The RNA-FM model (~500MB) downloads automatically on first run, or use `./download_model.py` to download manually.
+The RNA-FM model (~1.1GB) downloads automatically on first run, or use `./download_model.py` to download manually.
 
 ---
 
