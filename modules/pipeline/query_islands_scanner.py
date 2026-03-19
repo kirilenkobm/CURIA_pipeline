@@ -159,20 +159,39 @@ def _extract_sequence(
 
 
 def _get_islands(mask: np.ndarray, positions: np.ndarray, window_size: int) -> List[Dict]:
-    """Extract continuous islands from binary mask."""
+    """Extract continuous islands from binary mask.
+
+    Because the window end is extended by window_size, adjacent connected
+    components in the mask can produce overlapping coordinate ranges when
+    the gap between them is smaller than window_size.  We merge such
+    overlapping islands so callers always get non-overlapping intervals.
+    """
     labels, num_features = label(mask)
-    islands = []
+    raw: List[Dict] = []
     for i in range(1, num_features + 1):
         idx = np.where(labels == i)[0]
         start_pos = int(positions[idx[0]])
         end_pos = int(positions[idx[-1]] + window_size)
-        islands.append({
+        raw.append({
             'start': start_pos,
             'end': end_pos,
             'indices': idx,
             'max_prob': 0.0,
         })
-    return islands
+
+    if len(raw) <= 1:
+        return raw
+
+    merged: List[Dict] = [raw[0]]
+    for island in raw[1:]:
+        prev = merged[-1]
+        if island['start'] < prev['end']:
+            prev['end'] = max(prev['end'], island['end'])
+            prev['indices'] = np.concatenate([prev['indices'], island['indices']])
+        else:
+            merged.append(island)
+
+    return merged
 
 
 class GPUClient:

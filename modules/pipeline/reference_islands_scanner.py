@@ -169,20 +169,39 @@ def _extract_exonic_sequence(
 
 
 def _get_islands(mask: np.ndarray, positions: np.ndarray, window_size: int) -> List[Dict]:
-    """Extract continuous islands from binary mask."""
+    """Extract continuous islands from binary mask.
+
+    Because the window end is extended by window_size, adjacent connected
+    components in the mask can produce overlapping coordinate ranges when
+    the gap between them is smaller than window_size.  We merge such
+    overlapping islands so callers always get non-overlapping intervals.
+    """
     labels, num_features = label(mask)
-    islands = []
+    raw: List[Dict] = []
     for i in range(1, num_features + 1):
         idx = np.where(labels == i)[0]
         start_pos = int(positions[idx[0]])
         end_pos = int(positions[idx[-1]] + window_size)
-        islands.append({
+        raw.append({
             'start': start_pos,
             'end': end_pos,
             'indices': idx,
             'max_prob': 0.0,
         })
-    return islands
+
+    if len(raw) <= 1:
+        return raw
+
+    merged: List[Dict] = [raw[0]]
+    for island in raw[1:]:
+        prev = merged[-1]
+        if island['start'] < prev['end']:
+            prev['end'] = max(prev['end'], island['end'])
+            prev['indices'] = np.concatenate([prev['indices'], island['indices']])
+        else:
+            merged.append(island)
+
+    return merged
 
 
 def _map_spliced_to_genomic(
@@ -291,6 +310,7 @@ async def _sqlite_writer(queue: asyncio.Queue, sqlite_path: str) -> None:
     columns = {
         "transcript_id": "TEXT NOT NULL",
         "island_number": "INTEGER NOT NULL",
+        "segment_number": "INTEGER NOT NULL DEFAULT 0",
         "chrom": "TEXT NOT NULL",
         "start": "INTEGER NOT NULL",
         "end": "INTEGER NOT NULL",
@@ -299,7 +319,8 @@ async def _sqlite_writer(queue: asyncio.Queue, sqlite_path: str) -> None:
     }
     _ensure_table(conn, "reference_islands", columns)
     conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ref_islands ON reference_islands(transcript_id, island_number)"
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ref_islands "
+        "ON reference_islands(transcript_id, island_number, segment_number)"
     )
 
     while True:
@@ -312,7 +333,7 @@ async def _sqlite_writer(queue: asyncio.Queue, sqlite_path: str) -> None:
         updates = ", ".join(f"{k}=excluded.{k}" for k in item.keys())
         sql = (
             f"INSERT INTO reference_islands ({columns_sql}) VALUES ({placeholders}) "
-            f"ON CONFLICT(transcript_id, island_number) DO UPDATE SET {updates}"
+            f"ON CONFLICT(transcript_id, island_number, segment_number) DO UPDATE SET {updates}"
         )
         conn.execute(sql, tuple(item.values()))
         conn.commit()
@@ -396,16 +417,15 @@ async def _process_transcript(
     # Map to genomic coordinates
     results = []
     for island_num, island in enumerate(islands, start=1):
-        # Get genomic segments for this island
         segments = _map_spliced_to_genomic(
             job.exon_blocks, job.strand, island['start'], island['end']
         )
 
-        # Store each segment
-        for seg_start, seg_end in segments:
+        for seg_idx, (seg_start, seg_end) in enumerate(segments):
             results.append({
                 "transcript_id": job.transcript_id,
                 "island_number": island_num,
+                "segment_number": seg_idx,
                 "chrom": job.chrom,
                 "start": seg_start,
                 "end": seg_end,
@@ -596,16 +616,17 @@ def run_reference_islands_scanner(
         # Export to JSON
         conn = sqlite3.connect(sqlite_path)
         cursor = conn.execute(
-            "SELECT transcript_id, island_number, chrom, start, end, strand, score "
-            "FROM reference_islands ORDER BY transcript_id, island_number"
+            "SELECT transcript_id, island_number, segment_number, chrom, start, end, strand, score "
+            "FROM reference_islands ORDER BY transcript_id, island_number, segment_number"
         )
 
         islands_by_transcript = {}
-        for tid, island_num, chrom, start, end, strand, score in cursor:
+        for tid, island_num, seg_num, chrom, start, end, strand, score in cursor:
             if tid not in islands_by_transcript:
                 islands_by_transcript[tid] = []
             islands_by_transcript[tid].append({
                 "island_number": island_num,
+                "segment_number": seg_num,
                 "chrom": chrom,
                 "start": start,
                 "end": end,

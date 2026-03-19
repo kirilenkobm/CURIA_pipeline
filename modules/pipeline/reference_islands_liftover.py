@@ -302,13 +302,10 @@ def _write_outputs(
     merged_regions: List[Tuple[str, int, int, int, List[dict]]],
     clusters_json_path: str | Path,
     union_to_query_path: str | Path,
-    out_jobs_path: str | Path,
-    island_to_query_path: str | Path | None,
 ) -> None:
     """Write all output files in formats compatible with downstream pipeline steps."""
     clusters_output = {}
     union_to_query: Dict[str, List[str]] = {}
-    island_to_query: Dict[str, List[str]] = defaultdict(list)
 
     for idx, (chrom, start, end, strand_int, cluster) in enumerate(merged_regions, start=1):
         merged_id = f"query_merged_region_{idx}"
@@ -339,29 +336,11 @@ def _write_outputs(
             if merged_id not in union_to_query[uid]:
                 union_to_query[uid].append(merged_id)
 
-            island_key = f"{e['transcript_id']}_island_{e['island_idx']}"
-            if merged_id not in island_to_query[island_key]:
-                island_to_query[island_key].append(merged_id)
-
     with open(clusters_json_path, "w") as f:
         json.dump(clusters_output, f, indent=2)
 
     with open(union_to_query_path, "w") as f:
         json.dump(union_to_query, f, indent=2)
-
-    with open(out_jobs_path, "w") as f:
-        f.write("transcript_id\tchain_id\tmerged_query_id\tbiotype\tchrom\tstart\tend\tstrand\n")
-        for idx, (chrom, start, end, strand_int, cluster) in enumerate(merged_regions, start=1):
-            merged_id = f"query_merged_region_{idx}"
-            for e in cluster:
-                f.write(
-                    f"{e['transcript_id']}\t{e['chain_id']}\t{merged_id}\t"
-                    f"{e['biotype']}\t{chrom}\t{start}\t{end}\t{strand_int}\n"
-                )
-
-    if island_to_query_path:
-        with open(island_to_query_path, "w") as f:
-            json.dump(dict(island_to_query), f, indent=2)
 
 
 def liftover_reference_islands(
@@ -371,8 +350,6 @@ def liftover_reference_islands(
     short_joblist_path: str | Path,
     clusters_json_path: str | Path,
     union_to_query_path: str | Path,
-    out_jobs_path: str | Path,
-    island_to_query_path: str | Path | None = None,
     max_chains_per_gene: int = 5,
     chains=None,
     chain_min_score: int = 25_000,
@@ -396,8 +373,6 @@ def liftover_reference_islands(
         short_joblist_path: Path to short_ncRNA_joblist.txt (pairs to exclude)
         clusters_json_path: Output path for query_regions_clusters.json
         union_to_query_path: Output path for union_to_query.json
-        out_jobs_path: Output path for lnc_rna_preprocessing_jobs.tsv
-        island_to_query_path: Output path for island_to_query_regions.json (optional)
         max_chains_per_gene: Keep only top-K chains per gene (default 5, lowest id = best)
         chains: Pre-loaded GenomeAlignmentsCollection (optional, avoids reloading)
         chain_min_score: Minimum chain score for loading chains (default 25_000)
@@ -431,8 +406,7 @@ def liftover_reference_islands(
 
     if n_total_pairs == 0:
         print("# No pairs to process — writing empty outputs")
-        _write_empty_outputs(clusters_json_path, union_to_query_path,
-                             out_jobs_path, island_to_query_path)
+        _write_empty_outputs(clusters_json_path, union_to_query_path)
         return
 
     # 4. Use pre-loaded chains or load from file
@@ -451,8 +425,7 @@ def liftover_reference_islands(
 
     if not projected:
         print("# No intervals projected — writing empty outputs")
-        _write_empty_outputs(clusters_json_path, union_to_query_path,
-                             out_jobs_path, island_to_query_path)
+        _write_empty_outputs(clusters_json_path, union_to_query_path)
         return
 
     # 6. Merge overlapping projected intervals
@@ -462,28 +435,16 @@ def liftover_reference_islands(
     print(f"# Merged into {len(merged_regions)} query regions ({total_bp:,} bp total)")
 
     # 7. Write outputs
-    _write_outputs(
-        merged_regions, clusters_json_path, union_to_query_path,
-        out_jobs_path, island_to_query_path,
-    )
+    _write_outputs(merged_regions, clusters_json_path, union_to_query_path)
     print(f"# Written: {clusters_json_path}")
     print(f"# Written: {union_to_query_path}")
-    if island_to_query_path:
-        print(f"# Written: {island_to_query_path}")
 
 
-def _write_empty_outputs(
-    clusters_json_path, union_to_query_path, out_jobs_path, island_to_query_path,
-):
+def _write_empty_outputs(clusters_json_path, union_to_query_path):
     with open(clusters_json_path, "w") as f:
         json.dump({}, f, indent=2)
     with open(union_to_query_path, "w") as f:
         json.dump({}, f, indent=2)
-    with open(out_jobs_path, "w") as f:
-        f.write("transcript_id\tchain_id\tmerged_query_id\tbiotype\tchrom\tstart\tend\tstrand\n")
-    if island_to_query_path:
-        with open(island_to_query_path, "w") as f:
-            json.dump({}, f, indent=2)
 
 
 __all__ = ["liftover_reference_islands"]

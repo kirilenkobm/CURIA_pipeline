@@ -76,10 +76,6 @@ class OutputPaths:
         return self.mappings_dir / "union_to_isoforms.json"
 
     @property
-    def long_jobs(self) -> Path:
-        return self.joblists_dir / "lnc_rna_preprocessing_jobs.tsv"
-
-    @property
     def preprocessed_reference(self) -> Path:
         if self.ref_preprocessed_override is not None:
             return self.ref_preprocessed_override
@@ -124,10 +120,6 @@ class OutputPaths:
     @property
     def island_alignment_sqlite(self) -> Path:
         return self.intermediate_sqlite_dir / "island_alignment_results.sqlite"
-
-    @property
-    def island_to_query_regions(self) -> Path:
-        return self.mappings_dir / "island_to_query_regions.json"
 
     @property
     def query_islands_bed(self) -> Path:

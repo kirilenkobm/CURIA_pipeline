@@ -357,8 +357,6 @@ def main():
                 short_joblist_path=paths.short_joblist,
                 clusters_json_path=paths.query_regions_clusters,
                 union_to_query_path=paths.union_to_query,
-                out_jobs_path=paths.long_jobs,
-                island_to_query_path=paths.island_to_query_regions,
                 chains=genome_chains,
             )
 
