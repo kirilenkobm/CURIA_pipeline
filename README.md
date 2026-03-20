@@ -8,12 +8,23 @@ CURIA identifies conserved non-coding RNAs across distantly related species by c
 
 ## Installation
 
+If you don't have [uv](https://docs.astral.sh/uv/) installed:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then set up the project:
+
 ```bash
 git clone --recurse-submodules git@github.com:kirilenkobm/curia_pipeline.git
 cd curia_pipeline
-conda env create -f environment.yaml
-conda activate CURIA_pipeline
+uv sync
+source .venv/bin/activate
 ```
+
+> **macOS note:** OpenMP is required for scikit-learn and other numerical libraries.
+> Install it once with: `brew install libomp`
 
 The RNA-FM model (~1.1GB) downloads automatically on first run, or use `./download_model.py` to download manually.
 
