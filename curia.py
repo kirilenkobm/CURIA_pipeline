@@ -453,6 +453,7 @@ def main():
                 str(paths.island_alignment_sqlite),
                 str(paths.island_alignment_results),
                 max_concurrent=args.cpu_max_workers,
+                clusters_json_path=str(paths.query_regions_clusters),
             )
 
         print(f"# Pipeline completed! Island alignment results: {paths.island_alignment_results}")

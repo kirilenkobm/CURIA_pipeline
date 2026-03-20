@@ -6,7 +6,17 @@ For each gene, compares reference stability islands against query islands using:
   1) Sliding-window RNA-FM embeddings projected to PCA space
   2) MMD distance between per-window point clouds
   3) Multi-chain Smith-Waterman alignment on the MMD matrix
-  4) Hybrid monotonic chain: strict SW anchors + permissive fill
+
+Only provenance-valid pairs (from liftover) are computed.  Matching
+uses a three-stage pipeline:
+  a) Quality filter — positive SW score, mean MMD ≤ threshold,
+     minimum aligned nucleotides.
+  b) Greedy pruning — each query island is assigned to the single
+     best ref island (by lowest mean MMD).  One ref island may
+     claim multiple query islands (1-to-many).
+  c) Collinearity — the largest non-crossing subset is kept via
+     LIS (same strand) or LDS (opposite strand), removing
+     "spaghetti" connections.
 
 Outputs a TSV summary of matched regions per island pair.
 """
@@ -23,7 +33,8 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from collections import defaultdict
+from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
@@ -51,32 +62,31 @@ class IslandAlignmentConfig:
       1. Windowed embedding – how sequences are sliced before RNA-FM
       2. MMD matrix – kernel-MMD computation controls
       3. Smith-Waterman – local alignment on the MMD matrix
-      4. Hook/anchor selection – the probe → hook → fill heuristic
+      4. Match quality – MMD ceiling, min aligned length
     """
 
     # -- windowed embedding ---------------------------------------------------
     window_size: int = 96
     stride: int = 4
     batch_size: int = 64
-    min_island_len: int = 64
+    min_island_len: int = 72
 
     # -- MMD matrix -----------------------------------------------------------
     mmd_skip: float = 1.0           # fill value for skipped pairs
     mean_dist_threshold: float = 3.0  # mean-centroid distance cutoff
 
     # -- Smith-Waterman -------------------------------------------------------
-    sw_tau: float = 0.08            # score = tau − mmd  (match bonus)
+    sw_tau: float = 0.15            # score = tau − mmd  (match bonus)
     sw_max_drift: int = 3           # max off-diagonal gap in SW
     sw_gap_open: float = 0.03
     sw_gap_extend: float = 0.01
     sw_min_score_frac: float = 0.3  # secondary chain threshold vs. best
-    sw_max_chains: int = 5          # max SW chains extracted per pair
+    sw_max_chains: int = 1          # max SW chains extracted per pair
 
-    # -- hook / anchor selection ----------------------------------------------
-    probe_hw: int = 2               # half-width of positional probes
-    hook_buffer: int = 1            # extra rows/cols around hooks for fill
-    hook_mmd_threshold: float = 0.08 # max diagonal MMD to accept a hook
-    enable_fill_islands: bool = False  # whether to add fill islands between anchors
+    # -- match quality ---------------------------------------------------------
+    max_match_mmd: float = 0.15      # reject matches with mean MMD above tau
+    min_match_eff_nt: int = 40       # minimum aligned nucleotides to keep
+    max_queries_per_ref: int = 2     # max query islands one ref island can claim
 
 
 DEFAULT_CONFIG = IslandAlignmentConfig()
@@ -422,161 +432,50 @@ def get_matched_region_nt(path, side: int,
 
 
 # ===========================================================================
-# Hook-based island pair selection (level-3 optimisation)
+# Collinearity helpers (LIS / LDS)
 # ===========================================================================
 
-def _get_probe_pairs(n_ref: int, n_q: int,
-                     config: IslandAlignmentConfig = DEFAULT_CONFIG,
-                     ) -> List[Tuple[int, int]]:
-    """Generate positional probe pairs."""
-    pairs = set()
-    for ri in range(n_ref):
-        q_exp = round(ri * max(n_q - 1, 0) / max(n_ref - 1, 1))
-        for off in range(-config.probe_hw, config.probe_hw + 1):
-            qi = q_exp + off
-            if 0 <= qi < n_q:
-                pairs.add((ri, qi))
-    return sorted(pairs)
+def _longest_increasing_subsequence(seq: List[int]) -> List[int]:
+    """Return indices of the longest non-decreasing subsequence.
 
-
-def select_pairs_to_compute(n_ref, n_q, pair_results, mmd_matrices,
-                            config: IslandAlignmentConfig = DEFAULT_CONFIG):
-    """Phase 2-3: find hooks from probes, determine fill pairs."""
-    best_per_ref: Dict[int, Tuple[int, float, float]] = {}
-    for pr in pair_results:
-        ri, qi = pr["ri"], pr["qi"]
-        mmd_val = pr["diag_mean_mmd"]
-        run_len = pr["diag_run_len"]
-        if mmd_val > config.hook_mmd_threshold or run_len < 2:
-            continue
-        score = -mmd_val + 0.001 * run_len
-        if ri not in best_per_ref or score > best_per_ref[ri][1]:
-            best_per_ref[ri] = (qi, score, mmd_val)
-
-    mono_hooks = []
-    last_q = -1
-    for ri in sorted(best_per_ref):
-        qi, _, _ = best_per_ref[ri]
-        if qi > last_q:
-            mono_hooks.append((ri, qi))
-            last_q = qi
-
-    bounded = [(-1, -1)] + mono_hooks + [(n_ref, n_q)]
-    fill_pairs = set()
-    for k in range(len(bounded) - 1):
-        r_lo = bounded[k][0] + 1
-        q_lo = max(0, bounded[k][1] + 1 - config.hook_buffer)
-        r_hi = bounded[k + 1][0] - 1
-        q_hi = min(n_q - 1, bounded[k + 1][1] - 1 + config.hook_buffer)
-        for ri in range(max(0, r_lo), min(n_ref, r_hi + 1)):
-            for qi in range(max(0, q_lo), min(n_q, q_hi + 1)):
-                if (ri, qi) not in mmd_matrices:
-                    fill_pairs.add((ri, qi))
-
-    return mono_hooks, sorted(fill_pairs)
-
-
-# ===========================================================================
-# Monotonic chain DP
-# ===========================================================================
-
-def _monotonic_chain_dp(candidates):
-    """Generic monotonic chain DP.  candidates = [(ri, qi, score, ...)]"""
-    if not candidates:
+    Used for same-strand collinearity: Q indices should increase (or stay
+    equal for 1-to-many from a single R) as R indices increase.
+    O(n log n) via patience sorting.
+    """
+    import bisect
+    if not seq:
         return []
-    candidates = sorted(candidates, key=lambda x: (x[0], x[1]))
-    nc = len(candidates)
-    dp = [c[2] for c in candidates]
-    parent = [-1] * nc
-    for k in range(nc):
-        for p in range(k):
-            if candidates[p][0] < candidates[k][0] and \
-               candidates[p][1] < candidates[k][1]:
-                val = dp[p] + candidates[k][2]
-                if val > dp[k]:
-                    dp[k] = val
-                    parent[k] = p
-    best_end = int(np.argmax(dp))
-    chain = []
-    idx = best_end
+    tails = []      # smallest tail value for IS of each length
+    tail_idx = []   # index in seq of that tail
+    parents = [-1] * len(seq)
+
+    for i, val in enumerate(seq):
+        pos = bisect.bisect_right(tails, val)
+        if pos == len(tails):
+            tails.append(val)
+            tail_idx.append(i)
+        else:
+            tails[pos] = val
+            tail_idx[pos] = i
+        parents[i] = tail_idx[pos - 1] if pos > 0 else -1
+
+    result = []
+    idx = tail_idx[-1]
     while idx >= 0:
-        chain.append(candidates[idx])
-        idx = parent[idx]
-    chain.reverse()
-    return chain
+        result.append(idx)
+        idx = parents[idx]
+    result.reverse()
+    return result
 
 
-# ===========================================================================
-# Hybrid chain: strict anchors + permissive fill
-# ===========================================================================
+def _longest_decreasing_subsequence(seq: List[int]) -> List[int]:
+    """Return indices of the longest non-increasing subsequence.
 
-def build_hybrid_chain(sw_chain, sw_results, pair_results, n_ref, n_q,
-                       config: IslandAlignmentConfig = DEFAULT_CONFIG):
-    """Build hybrid chain combining SW anchors with permissive fill."""
-    anchors = [(ri, qi) for ri, qi, *_ in sw_chain]
-
-    max_mmd_val = max(
-        (pr["diag_mean_mmd"] for pr in pair_results
-         if np.isfinite(pr["diag_mean_mmd"])),
-        default=1.0,
-    )
-    perm_pool = {}
-    for pr in pair_results:
-        ri, qi = pr["ri"], pr["qi"]
-        mmd_val = pr["diag_mean_mmd"]
-        if not np.isfinite(mmd_val):
-            continue
-        perm_pool[(ri, qi)] = {
-            "score": max_mmd_val - mmd_val,
-            "mmd": mmd_val,
-            "run_len": pr["diag_run_len"],
-        }
-
-    anchors_set = set(anchors)
-
-    def _fill_gap(r_lo, r_hi, q_lo, q_hi):
-        cands = []
-        for (ri, qi), info in perm_pool.items():
-            if ri < r_lo or ri > r_hi or qi < q_lo or qi > q_hi:
-                continue
-            if (ri, qi) in anchors_set or info["score"] <= 0:
-                continue
-            cands.append((ri, qi, info["score"], info["mmd"], info["run_len"]))
-        return _monotonic_chain_dp(cands) if cands else []
-
-    anchors_sorted = sorted(anchors)
-    boundaries = [(-1, -1)] + anchors_sorted + [(n_ref, n_q)]
-    hybrid = []
-
-    for k in range(len(boundaries) - 1):
-        lo_r, lo_q = boundaries[k]
-        hi_r, hi_q = boundaries[k + 1]
-
-        if (lo_r, lo_q) in anchors_set:
-            info = perm_pool.get((lo_r, lo_q))
-            sw = next((r for r in sw_results
-                       if r["ri"] == lo_r and r["qi"] == lo_q), None)
-            mmd = info["mmd"] if info else (sw["sw_mean_mmd"] if sw else 0)
-            rlen = info["run_len"] if info else 0
-            hybrid.append((lo_r, lo_q, "anchor", mmd, rlen))
-
-        # Only add fill islands if enabled
-        if config.enable_fill_islands:
-            for ri, qi, sc, mmd, rlen in _fill_gap(
-                    lo_r + 1, hi_r - 1, lo_q + 1, hi_q - 1):
-                hybrid.append((ri, qi, "fill", mmd, rlen))
-
-    if anchors_sorted:
-        lr, lq = anchors_sorted[-1]
-        if not hybrid or hybrid[-1][:2] != (lr, lq):
-            info = perm_pool.get((lr, lq))
-            sw = next((r for r in sw_results
-                       if r["ri"] == lr and r["qi"] == lq), None)
-            mmd = info["mmd"] if info else (sw["sw_mean_mmd"] if sw else 0)
-            rlen = info["run_len"] if info else 0
-            hybrid.append((lr, lq, "anchor", mmd, rlen))
-
-    return hybrid
+    Used for opposite-strand collinearity: Q indices should decrease as
+    R indices increase.  Implemented by negating and running LIS.
+    """
+    negated = [-v for v in seq]
+    return _longest_increasing_subsequence(negated)
 
 
 # ===========================================================================
@@ -592,17 +491,20 @@ def _compute_island_alignments(
     ref_win_embs: List[List[np.ndarray]],
     q_win_embs: List[List[np.ndarray]],
     config: IslandAlignmentConfig,
+    valid_pairs: Set[Tuple[int, int]],
 ) -> List[Dict]:
     """CPU-bound phase: MMD matrices, SW alignment, chain DP, row building.
 
     Runs in a thread pool so the event loop stays responsive and multiple
     jobs can compute in parallel (numpy releases the GIL).
+
+    Only (ri, qi) combinations in valid_pairs are computed — each reference
+    island is restricted to query islands found in its liftover-projected
+    regions.
     """
     n_ref = len(ref_islands)
     n_q = len(q_islands)
 
-    # Phase 1: Positional probes
-    probe_pairs = _get_probe_pairs(n_ref, n_q, config)
     pair_results = []
     mmd_matrices: Dict[Tuple[int, int], np.ndarray] = {}
 
@@ -621,14 +523,7 @@ def _compute_island_alignments(
             "diag_mean_mmd": mm, "diag_run_len": rl,
         })
 
-    for ri, qi in probe_pairs:
-        _do_pair(ri, qi)
-
-    # Phase 2-3: Hooks + fill
-    hooks, fill_pairs = select_pairs_to_compute(
-        n_ref, n_q, pair_results, mmd_matrices, config)
-
-    for ri, qi in fill_pairs:
+    for ri, qi in sorted(valid_pairs):
         _do_pair(ri, qi)
 
     # SW scoring
@@ -648,20 +543,89 @@ def _compute_island_alignments(
             "diag_run_len": old["diag_run_len"] if old else 0,
         })
 
-    # Strict monotonic chain (SW)
-    sw_cands = [(r["ri"], r["qi"], r["sw_score"], r["sw_mean_mmd"],
-                 r["sw_eff_nt"], r["sw_n_chains"])
-                for r in sw_results if r["sw_score"] > 0]
-    sw_chain = _monotonic_chain_dp(sw_cands)
+    # ---- Quality filter + balanced greedy + collinearity ---------------------
+    #
+    # 1. Filter: positive score, mean MMD ≤ threshold, min aligned length.
+    # 2. Balanced greedy: sort all candidates by MMD (best first), assign
+    #    each pair if Q is unassigned and R hasn't reached its cap.
+    #    Distributes Q's across R's instead of letting one R monopolize.
+    # 3. Collinearity: keep the largest non-crossing subset (LIS/LDS)
+    #    so connections don't form "spaghetti".
 
-    # Hybrid chain
-    hybrid = build_hybrid_chain(sw_chain, sw_results, pair_results,
-                                n_ref, n_q, config)
+    candidates = [
+        r for r in sw_results
+        if (r["sw_score"] > 0
+            and r["sw_mean_mmd"] <= config.max_match_mmd
+            and r["sw_eff_nt"] >= config.min_match_eff_nt)
+    ]
+
+    # Balanced greedy: best-quality pairs first; each Q assigned once,
+    # each R limited to max_queries_per_ref Q's.
+    candidates.sort(key=lambda r: r["sw_mean_mmd"])
+    assigned_qi: Set[int] = set()
+    ri_count: Dict[int, int] = defaultdict(int)
+    pruned = []
+    for r in candidates:
+        ri, qi = r["ri"], r["qi"]
+        if qi in assigned_qi:
+            continue
+        if ri_count[ri] >= config.max_queries_per_ref:
+            continue
+        assigned_qi.add(qi)
+        ri_count[ri] += 1
+        pruned.append((ri, qi))
+
+    # Collinearity: remove crossing matches via longest monotonic subseq.
+    # Determine strand relationship: if ref and query are on opposite
+    # strands, collinear order means Q indices decrease as R increases.
+    ref_strand = ref_islands[0].get("strand", 1) if ref_islands else 1
+    q_strand = q_islands[0].get("strand", 1) if q_islands else 1
+    same_strand = (ref_strand == q_strand)
+
+    # Sort by ref index; for same R, sort by Q index
+    pruned.sort(key=lambda x: (x[0], x[1]))
+
+    if len(pruned) > 1:
+        q_seq = [qi for _, qi in pruned]
+        if same_strand:
+            keep_idx = _longest_increasing_subsequence(q_seq)
+        else:
+            keep_idx = _longest_decreasing_subsequence(q_seq)
+        pruned = [pruned[i] for i in keep_idx]
+
+    # Intra-island collinearity: when one ref island matches multiple
+    # query islands, the matched sub-regions within the ref island must
+    # be ordered consistently (no crossing bands from the same R).
+    ri_groups: Dict[int, List[Tuple[int, int, int]]] = defaultdict(list)
+    for idx, (ri, qi) in enumerate(pruned):
+        paths = sw_paths.get((ri, qi), [])
+        ref_pos = min(p[0] for p in paths[0]) if paths and paths[0] else 0
+        ri_groups[ri].append((idx, qi, ref_pos))
+
+    drop_indices: Set[int] = set()
+    for ri, group in ri_groups.items():
+        if len(group) <= 1:
+            continue
+        group.sort(key=lambda x: x[1])  # sort by qi
+        ref_positions = [ref_pos for _, _, ref_pos in group]
+        keep = _longest_increasing_subsequence(ref_positions)
+        kept_set = set(keep)
+        for i, (orig_idx, _, _) in enumerate(group):
+            if i not in kept_set:
+                drop_indices.add(orig_idx)
+
+    if drop_indices:
+        pruned = [p for i, p in enumerate(pruned) if i not in drop_indices]
+
+    accepted = set(pruned)
 
     # Build output rows
     rows = []
+    for r in candidates:
+        ri, qi = r["ri"], r["qi"]
+        if (ri, qi) not in accepted:
+            continue
 
-    for ri, qi, typ, mmd_val, run_len in hybrid:
         ri_isl = ref_islands[ri]
         qi_isl = q_islands[qi]
 
@@ -678,7 +642,7 @@ def _compute_island_alignments(
             "gene_id": gene_id,
             "ref_island": f"R{ri}",
             "query_island": f"Q{qi}",
-            "type": typ,
+            "type": "match",
             "ref_chrom": ri_isl["chrom"],
             "ref_start": ri_isl["start"],
             "ref_end": ri_isl["end"],
@@ -688,7 +652,7 @@ def _compute_island_alignments(
             "query_end": qi_isl["end"],
             "query_len": qi_isl["end"] - qi_isl["start"],
             "n_chains": len(paths),
-            "diag_mmd": f"{mmd_val:.4f}",
+            "diag_mmd": f"{r['sw_mean_mmd']:.4f}",
         }
 
         chains = []
@@ -728,6 +692,7 @@ async def _process_job(
     gpu: GPUClient,
     config: IslandAlignmentConfig = DEFAULT_CONFIG,
     cpu_pool: concurrent.futures.ThreadPoolExecutor = None,
+    clusters_data: Dict = None,
 ) -> List[Dict]:
     """Process a single island alignment job.
 
@@ -737,25 +702,65 @@ async def _process_job(
     """
     gene_id = job.gene_id
 
-    # Select islands
-    ref_islands = sorted(
-        [i for i in ref_data[gene_id]["islands"]
-         if i["end"] - i["start"] >= config.min_island_len],
-        key=lambda x: x["start"],
+    # Select ref islands, tracking each island's original index in the
+    # unfiltered list so we can cross-reference liftover provenance.
+    all_ref_islands = ref_data[gene_id]["islands"]
+    ref_with_orig = sorted(
+        [(orig_idx, isl) for orig_idx, isl in enumerate(all_ref_islands)
+         if isl["end"] - isl["start"] >= config.min_island_len],
+        key=lambda x: x[1]["start"],
     )
+    orig_indices = [orig_idx for orig_idx, _ in ref_with_orig]
+    ref_islands = [isl for _, isl in ref_with_orig]
 
+    # Collect query islands, tagging each with its merged_query_id
     qr_ids = list(set(u_to_query.get(gene_id, [])))
-    q_islands = sorted(
-        [isl for qr in qr_ids
+    q_with_region = sorted(
+        [(qr, isl) for qr in qr_ids
          for isl in query_islands_data.get(qr, [])
          if isl["end"] - isl["start"] >= config.min_island_len],
-        key=lambda x: x["start"],
+        key=lambda x: x[1]["start"],
     )
+    q_islands = [isl for _, isl in q_with_region]
 
     n_ref = len(ref_islands)
     n_q = len(q_islands)
 
     if n_ref == 0 or n_q == 0:
+        return []
+
+    # Build provenance-based valid_pairs using the *core* projected
+    # interval (before query-side flanking).  This reflects where the
+    # reference island honestly maps in the query, not the wider scan
+    # region.  Falls back to the flanked start/end if core is absent.
+    ref_idx_to_intervals: Dict[int, List[Tuple[int, int]]] = defaultdict(list)
+    for merged_id in qr_ids:
+        cluster_info = clusters_data.get(merged_id, {})
+        for entry in cluster_info.get("merged_transcripts", []):
+            if entry.get("transcript_id") == gene_id and entry.get("island_idx") is not None:
+                proj_start = entry.get("core_start") or entry.get("start")
+                proj_end = entry.get("core_end") or entry.get("end")
+                if proj_start is not None and proj_end is not None:
+                    ref_idx_to_intervals[entry["island_idx"]].append(
+                        (proj_start, proj_end)
+                    )
+
+    def _overlaps(q_start: int, q_end: int, intervals: List[Tuple[int, int]]) -> bool:
+        return any(q_end > iv_s and q_start < iv_e for iv_s, iv_e in intervals)
+
+    valid_pairs: Set[Tuple[int, int]] = set()
+    for ri, orig_idx in enumerate(orig_indices):
+        intervals = ref_idx_to_intervals.get(orig_idx)
+        if not intervals:
+            for qi in range(n_q):
+                valid_pairs.add((ri, qi))
+        else:
+            for qi in range(n_q):
+                q_isl = q_islands[qi]
+                if _overlaps(q_isl["start"], q_isl["end"], intervals):
+                    valid_pairs.add((ri, qi))
+
+    if not valid_pairs:
         return []
 
     # Extract sequences
@@ -779,7 +784,7 @@ async def _process_job(
         cpu_pool,
         _compute_island_alignments,
         gene_id, ref_islands, q_islands, ref_seqs, q_seqs,
-        ref_win_embs, q_win_embs, config,
+        ref_win_embs, q_win_embs, config, valid_pairs,
     )
     return rows
 
@@ -918,6 +923,7 @@ def run_island_alignment_scheduler(
     max_concurrent: int = 128,
     test_cap_jobs: Optional[int] = None,
     config: Optional[IslandAlignmentConfig] = None,
+    clusters_json_path: str = None,
 ) -> None:
     """
     Run island alignment scheduler with GPU executor integration.
@@ -925,6 +931,10 @@ def run_island_alignment_scheduler(
     Uses the shared GPU executor process for RNA-FM inference (per-token PCA
     embeddings, NOT mean-pooled) and writes results to an intermediate SQLite
     database, then exports to TSV.
+
+    clusters_json_path (query_regions_clusters.json from the liftover step)
+    provides provenance: each reference island is only matched against query
+    islands found in the regions it was projected into.
     """
     if config is None:
         config = DEFAULT_CONFIG
@@ -965,6 +975,10 @@ def run_island_alignment_scheduler(
         with open(query_islands_json_path, "r") as f:
             query_islands_data = json.load(f)
 
+        with open(clusters_json_path, "r") as f:
+            clusters_data = json.load(f)
+        print(f"# Provenance-aware matching: {len(clusters_data)} query regions")
+
         ref_acc = TwoBitAccessor(ref_2bit_path)
         query_acc = TwoBitAccessor(query_2bit_path)
 
@@ -994,7 +1008,7 @@ def run_island_alignment_scheduler(
                     rows = await _process_job(
                         job, ref_data, u_to_query, query_islands_data,
                         ref_acc, query_acc, gpu, config,
-                        cpu_pool,
+                        cpu_pool, clusters_data,
                     )
                     for row in rows:
                         await result_queue.put(row)

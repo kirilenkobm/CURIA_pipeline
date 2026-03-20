@@ -85,6 +85,7 @@ sample_preprocessing_reference/
 quick_test/
 smoke_test_output/
 hg38_vs_mm39/
+hg38_vs_mm39_*
 big_test/
 todo.txt
 draft/
@@ -138,3 +139,4 @@ draft/
 /input_data/mm39_annotation_validation/mm39_quick_test_metadata.tsv
 /validation/bulk_validation_overall.tsv
 /validation/bulk_validation_summary.tsv
+/cleanup_quick_test_results.sh

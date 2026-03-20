@@ -132,20 +132,20 @@ def _project_flanked_islands(
     pairs_by_chain: Dict[int, List[dict]],
     ref_islands_data: dict,
     chains,
-    ref_flank: int = SCAN_WINDOW_SIZE,
+    ref_flank: int = 2 * SCAN_WINDOW_SIZE,
+    query_extra_flank: int = 256,
     max_gap_ratio: float = 25.0,
     max_expansion_ratio: float = 25.0,
-    query_flank_ratio: float = 5.0,
 ) -> List[dict]:
     """
-    Project reference islands through alignment chains with minimal flanks.
+    Project reference islands through alignment chains with flanks.
 
-    Reference-side: adds ±ref_flank (scan window size) around each island before
-    projecting through the chain.
+    Reference-side: adds ±ref_flank (2× scan window size = 144 nt) around
+    each island before projecting through the chain, ensuring full window
+    coverage at island edges.
 
-    Query-side: after projection, if the projected region is shorter than
-    query_flank_ratio × island_length, adds ±island_length flanks to ensure
-    coverage.  Otherwise the projection is already wide enough.
+    Query-side: after projection, adds ±(island_length + query_extra_flank)
+    to account for alignment drift and imprecision in chain projections.
 
     Expansion filter: projections exceeding max_expansion_ratio × flanked interval
     length are rejected (gap-spanning explosions).
@@ -224,9 +224,12 @@ def _project_flanked_islands(
                 stats["too_expanded"] += 1
                 continue
 
-            if projected_len < island_len * query_flank_ratio:
-                q_start = max(0, q_start - island_len)
-                q_end = q_end + island_len
+            core_q_start = q_start
+            core_q_end = q_end
+
+            q_pad = island_len + query_extra_flank
+            q_start = max(0, q_start - q_pad)
+            q_end = q_end + q_pad
 
             query_strand = 1 if meta["transcript_strand"] == meta["chain_strand"] else -1
             stats["projected_ok"] += 1
@@ -235,6 +238,8 @@ def _project_flanked_islands(
                 "chrom": chain.q_chrom,
                 "start": q_start,
                 "end": q_end,
+                "core_start": core_q_start,
+                "core_end": core_q_end,
                 "strand": query_strand,
                 "transcript_id": meta["transcript_id"],
                 "chain_id": meta["chain_id_str"],
@@ -317,17 +322,20 @@ def _write_outputs(
                 "end": end,
                 "strand": strand_int,
             },
-            "merged_transcripts": [
-                {
-                    "transcript_id": e["transcript_id"],
-                    "chain_id": e["chain_id"],
-                    "chrom": e["chrom"],
-                    "start": e["start"],
-                    "end": e["end"],
-                    "strand": e["strand"],
-                }
-                for e in cluster
-            ],
+        "merged_transcripts": [
+            {
+                "transcript_id": e["transcript_id"],
+                "chain_id": e["chain_id"],
+                "chrom": e["chrom"],
+                "start": e["start"],
+                "end": e["end"],
+                "core_start": e.get("core_start"),
+                "core_end": e.get("core_end"),
+                "strand": e["strand"],
+                "island_idx": e.get("island_idx"),
+            }
+            for e in cluster
+        ],
         }
 
         for e in cluster:
@@ -361,9 +369,8 @@ def liftover_reference_islands(
     transcripts, only flanked reference islands are projected — dramatically
     reducing the query region to scan.
 
-    Reference-side flanking: ±SCAN_WINDOW_SIZE (72 nt) around each island.
-    After projection, if the query region is < 5× island length, ±island_length
-    flanks are added on the query side for safety.
+    Reference-side flanking: ±2×SCAN_WINDOW_SIZE (144 nt) around each island.
+    After projection, ±island_length flanks are always added on the query side.
     Projections exceeding 25× the flanked interval are rejected (gap explosions).
 
     Args:
@@ -418,7 +425,7 @@ def liftover_reference_islands(
         print(f"# Using pre-loaded chains ({len(chains)} chains)")
 
     # 5. Project flanked islands through chains
-    print(f"# Projecting flanked islands (ref flank=±{SCAN_WINDOW_SIZE} nt)...")
+    print(f"# Projecting flanked islands (ref flank=±{2 * SCAN_WINDOW_SIZE} nt, query flank=±(island_len+256))...")
     projected = _project_flanked_islands(
         pairs_by_chain, ref_islands_data, chains,
     )
