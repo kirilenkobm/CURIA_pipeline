@@ -100,16 +100,16 @@ def precompute_self_kernels_batch(windows: List[np.ndarray],
     """Vectorised self-kernel computation for a list of same-shape windows.
 
     Falls back to the scalar loop when window sizes are mixed.
-    Returns a (n_windows,) float64 array.
+    Returns a (n_windows,) float32 array.
     """
     if not windows:
-        return np.array([], dtype=np.float64)
+        return np.array([], dtype=np.float32)
 
     n_pts_first = windows[0].shape[0]
     uniform = all(w.shape[0] == n_pts_first for w in windows)
 
     if uniform and n_pts_first >= 2:
-        W = np.stack(windows)                          # (n_wins, n_pts, d)
+        W = np.asarray(np.stack(windows), dtype=np.float32)  # (n_wins, n_pts, d)
         norms = (W ** 2).sum(axis=2)                   # (n_wins, n_pts)
         dots = W @ W.transpose(0, 2, 1)                # (n_wins, n_pts, n_pts)
         sq = np.maximum(norms[:, :, None] + norms[:, None, :] - 2 * dots, 0.0)
@@ -118,7 +118,7 @@ def precompute_self_kernels_batch(windows: List[np.ndarray],
         K_trace = np.trace(K, axis1=1, axis2=2)
         return (K_sum - K_trace) / (n_pts_first * (n_pts_first - 1))
 
-    return np.asarray(_precompute_self_kernel(windows, gamma), dtype=np.float64)
+    return np.asarray(_precompute_self_kernel(windows, gamma), dtype=np.float32)
 
 
 def compute_mmd_matrix_fast(
@@ -148,12 +148,13 @@ def compute_mmd_matrix_fast(
         ``compute_mmd_matrix``.
     """
     nr, nq = len(ref_wins), len(query_wins)
+    _f32 = np.float32
     if nr == 0 or nq == 0:
-        return np.full((nr, nq), np.inf), 0, 0
+        return np.full((nr, nq), np.inf, dtype=_f32), 0, 0
 
     # Mean-distance thresholding
-    ref_means = np.array([w.mean(axis=0) for w in ref_wins])
-    query_means = np.array([w.mean(axis=0) for w in query_wins])
+    ref_means = np.array([w.mean(axis=0) for w in ref_wins], dtype=_f32)
+    query_means = np.array([w.mean(axis=0) for w in query_wins], dtype=_f32)
     mean_dist = np.sqrt(_pairwise_sq_dists(ref_means, query_means))
     compute_mask = mean_dist <= mean_dist_threshold
 
@@ -161,7 +162,7 @@ def compute_mmd_matrix_fast(
     n_skipped = nr * nq - n_computed
 
     if n_computed == 0:
-        return np.full((nr, nq), mmd_skip), 0, n_skipped
+        return np.full((nr, nq), mmd_skip, dtype=_f32), 0, n_skipped
 
     # --- Vectorised cross-kernel computation --------------------------------
     n_r = ref_wins[0].shape[0]
@@ -175,18 +176,18 @@ def compute_mmd_matrix_fast(
     )
 
     if uniform:
-        R = np.stack(ref_wins)         # (nr, n_r, d)
-        Q = np.stack(query_wins)       # (nq, n_q, d)
+        R = np.asarray(np.stack(ref_wins), dtype=_f32)
+        Q = np.asarray(np.stack(query_wins), dtype=_f32)
 
         R_norms = (R ** 2).sum(axis=2)  # (nr, n_r)
         Q_norms = (Q ** 2).sum(axis=2)  # (nq, n_q)
         Q_flat = Q.reshape(-1, d)       # (nq*n_q, d)
         Q_norms_flat = Q_norms.reshape(1, -1)
 
-        cross_means = np.empty((nr, nq))
+        cross_means = np.empty((nr, nq), dtype=_f32)
 
         # Process ref windows in chunks to cap memory at ~256 MB per temp
-        max_entries = 256 * 1024 * 1024 // 8  # 256 MB of float64
+        max_entries = 256 * 1024 * 1024 // 4  # 256 MB of float32
         chunk = max(1, max_entries // (n_r * nq * n_q))
         chunk = min(chunk, nr)
 
@@ -198,15 +199,16 @@ def compute_mmd_matrix_fast(
             R_n = R_norms[i0:i1].reshape(-1, 1)     # (nc*n_r, 1)
 
             sq = np.maximum(R_n + Q_norms_flat - 2.0 * (R_chunk @ Q_flat.T), 0.0)
-            K = np.exp(-gamma * sq)
-            cross_means[i0:i1] = K.reshape(nc, n_r, nq, n_q).mean(axis=(1, 3))
+            np.multiply(-gamma, sq, out=sq)
+            np.exp(sq, out=sq)
+            cross_means[i0:i1] = sq.reshape(nc, n_r, nq, n_q).mean(axis=(1, 3))
 
         mmd_sq = ref_xx[:, None] + query_yy[None, :] - 2.0 * cross_means
         mat = np.sqrt(np.maximum(mmd_sq, 0.0))
         mat[~compute_mask] = mmd_skip
     else:
         # Rare fallback for mixed window sizes
-        mat = np.full((nr, nq), mmd_skip)
+        mat = np.full((nr, nq), mmd_skip, dtype=_f32)
         for i in range(nr):
             X = ref_wins[i]
             n = X.shape[0]
@@ -251,7 +253,7 @@ def compute_mmd_matrix(
     """
     nr, nq = len(ref_wins), len(query_wins)
     if nr == 0 or nq == 0:
-        return np.full((nr, nq), np.inf), 0, 0
+        return np.full((nr, nq), np.inf, dtype=np.float32), 0, 0
 
     gamma = _estimate_gamma(ref_wins, query_wins)
     ref_xx = precompute_self_kernels_batch(ref_wins, gamma)
