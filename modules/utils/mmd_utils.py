@@ -27,6 +27,76 @@ from typing import List, Tuple
 
 import numpy as np
 
+# Numba's scalar math.exp in nested loops is slower than numpy's
+# BLAS matmul + SIMD-vectorised np.exp for these matrix sizes.
+# Keep the JIT kernels around but disable by default; re-enable with
+# CURIA_USE_NUMBA=1 if SVML is installed (conda install -c numba icc_rt).
+_HAS_NUMBA = False
+try:
+    import numba as nb
+    import os as _os
+    if _os.environ.get("CURIA_USE_NUMBA", "0") == "1":
+        _HAS_NUMBA = True
+except ImportError:
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Numba-accelerated kernels (used when numba is installed)
+# ---------------------------------------------------------------------------
+# These fuse sq-dist + exp + sum into a single pass, avoiding the large
+# intermediate kernel matrix that the numpy path must materialise.
+# First call triggers JIT compilation (~2-3 s); cache=True persists it to
+# __pycache__ so subsequent runs start instantly.
+#
+# For best exp() throughput install Intel SVML (gives SIMD-vectorised exp):
+#   conda install -c numba icc_rt    # or:  pip install intel-cmaths
+
+if _HAS_NUMBA:
+    @nb.njit(cache=True, fastmath=True)
+    def _cross_kernel_means_jit(R, Q, neg_gamma, scale):
+        """Return (nr, nq) float32 array of mean kernel values."""
+        nr = R.shape[0]
+        n_r = R.shape[1]
+        d = R.shape[2]
+        nq = Q.shape[0]
+        n_q = Q.shape[1]
+        out = np.empty((nr, nq), dtype=np.float32)
+        for i in range(nr):
+            for j in range(nq):
+                total = 0.0
+                for p in range(n_r):
+                    for q in range(n_q):
+                        sq = 0.0
+                        for k in range(d):
+                            diff = R[i, p, k] - Q[j, q, k]
+                            sq += diff * diff
+                        total += math.exp(neg_gamma * sq)
+                out[i, j] = total * scale
+        return out
+
+    @nb.njit(cache=True, fastmath=True)
+    def _self_kernel_jit(W, neg_gamma, inv_count):
+        """Return (n_wins,) float32 self-kernel terms.
+
+        Exploits K(p,q)==K(q,p) to halve the exp() evaluations.
+        """
+        n_wins = W.shape[0]
+        n_pts = W.shape[1]
+        d = W.shape[2]
+        out = np.empty(n_wins, dtype=np.float32)
+        for w in range(n_wins):
+            total = 0.0
+            for p in range(n_pts):
+                for q in range(p + 1, n_pts):
+                    sq = 0.0
+                    for k in range(d):
+                        diff = W[w, p, k] - W[w, q, k]
+                        sq += diff * diff
+                    total += math.exp(neg_gamma * sq)
+            out[w] = total * 2.0 * inv_count
+        return out
+
 
 # ---------------------------------------------------------------------------
 # Low-level helpers
@@ -110,6 +180,11 @@ def precompute_self_kernels_batch(windows: List[np.ndarray],
 
     if uniform and n_pts_first >= 2:
         W = np.asarray(np.stack(windows), dtype=np.float32)  # (n_wins, n_pts, d)
+
+        if _HAS_NUMBA:
+            return _self_kernel_jit(
+                W, -gamma, 1.0 / (n_pts_first * (n_pts_first - 1)))
+
         norms = (W ** 2).sum(axis=2)                   # (n_wins, n_pts)
         dots = W @ W.transpose(0, 2, 1)                # (n_wins, n_pts, n_pts)
         sq = np.maximum(norms[:, :, None] + norms[:, None, :] - 2 * dots, 0.0)
@@ -179,29 +254,32 @@ def compute_mmd_matrix_fast(
         R = np.asarray(np.stack(ref_wins), dtype=_f32)
         Q = np.asarray(np.stack(query_wins), dtype=_f32)
 
-        R_norms = (R ** 2).sum(axis=2)  # (nr, n_r)
-        Q_norms = (Q ** 2).sum(axis=2)  # (nq, n_q)
-        Q_flat = Q.reshape(-1, d)       # (nq*n_q, d)
-        Q_norms_flat = Q_norms.reshape(1, -1)
+        if _HAS_NUMBA:
+            cross_means = _cross_kernel_means_jit(
+                R, Q, -gamma, 1.0 / (n_r * n_q))
+        else:
+            R_norms = (R ** 2).sum(axis=2)  # (nr, n_r)
+            Q_norms = (Q ** 2).sum(axis=2)  # (nq, n_q)
+            Q_flat = Q.reshape(-1, d)       # (nq*n_q, d)
+            Q_norms_flat = Q_norms.reshape(1, -1)
 
-        cross_means = np.empty((nr, nq), dtype=_f32)
+            cross_means = np.empty((nr, nq), dtype=_f32)
 
-        # Process ref windows in chunks to cap memory at ~256 MB per temp
-        max_entries = 256 * 1024 * 1024 // 4  # 256 MB of float32
-        chunk = max(1, max_entries // (n_r * nq * n_q))
-        chunk = min(chunk, nr)
+            max_entries = 256 * 1024 * 1024 // 4  # 256 MB of float32
+            chunk = max(1, max_entries // (n_r * nq * n_q))
+            chunk = min(chunk, nr)
 
-        for i0 in range(0, nr, chunk):
-            i1 = min(i0 + chunk, nr)
-            nc = i1 - i0
+            for i0 in range(0, nr, chunk):
+                i1 = min(i0 + chunk, nr)
+                nc = i1 - i0
 
-            R_chunk = R[i0:i1].reshape(-1, d)       # (nc*n_r, d)
-            R_n = R_norms[i0:i1].reshape(-1, 1)     # (nc*n_r, 1)
+                R_chunk = R[i0:i1].reshape(-1, d)       # (nc*n_r, d)
+                R_n = R_norms[i0:i1].reshape(-1, 1)     # (nc*n_r, 1)
 
-            sq = np.maximum(R_n + Q_norms_flat - 2.0 * (R_chunk @ Q_flat.T), 0.0)
-            np.multiply(-gamma, sq, out=sq)
-            np.exp(sq, out=sq)
-            cross_means[i0:i1] = sq.reshape(nc, n_r, nq, n_q).mean(axis=(1, 3))
+                sq = np.maximum(R_n + Q_norms_flat - 2.0 * (R_chunk @ Q_flat.T), 0.0)
+                np.multiply(-gamma, sq, out=sq)
+                np.exp(sq, out=sq)
+                cross_means[i0:i1] = sq.reshape(nc, n_r, nq, n_q).mean(axis=(1, 3))
 
         mmd_sq = ref_xx[:, None] + query_yy[None, :] - 2.0 * cross_means
         mat = np.sqrt(np.maximum(mmd_sq, 0.0))

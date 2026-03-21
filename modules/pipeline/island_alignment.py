@@ -995,7 +995,9 @@ def run_island_alignment_scheduler(
             jobs = jobs[:test_cap_jobs]
             print(f"# [TEST MODE] Capped to {len(jobs)} jobs (--test-cap-jobs={test_cap_jobs})")
         print(f"# Loaded {len(jobs)} island alignment jobs.")
-        print(f"# Island alignment: {n_async_workers} async workers, {n_cpu_workers} CPU threads")
+        from modules.utils.mmd_utils import _HAS_NUMBA
+        mmd_backend = "numba (JIT)" if _HAS_NUMBA else "numpy (vectorised)"
+        print(f"# Island alignment: {n_async_workers} async workers, {n_cpu_workers} CPU threads, MMD backend: {mmd_backend}")
 
         with open(ref_islands_json_path, "r") as f:
             ref_data = json.load(f)

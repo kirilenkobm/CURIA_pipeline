@@ -85,7 +85,7 @@ def _parse_mean_pool(flags) -> bool:
 
 def _collect_batch(input_queue, cfg: ExecutorConfig):
     try:
-        job = input_queue.get(timeout=0.1)
+        job = input_queue.get(timeout=0.01)
     except queue.Empty:
         return [], False
 
@@ -93,20 +93,15 @@ def _collect_batch(input_queue, cfg: ExecutorConfig):
         return [], True
 
     jobs = [job]
-    start = time.time()
     stop_after = False
 
+    # Drain: grab everything currently queued without waiting.
+    # Keeps GPU responsive instead of sleeping 200ms for a full batch.
     while len(jobs) < cfg.max_batch:
-        remaining = cfg.max_wait - (time.time() - start)
-        if remaining <= 0:
-            break
-        timeout = min(cfg.collect_timeout, remaining)
         try:
-            job = input_queue.get(timeout=timeout)
+            job = input_queue.get_nowait()
         except queue.Empty:
-            if len(jobs) >= cfg.min_batch or (time.time() - start) >= cfg.max_wait:
-                break
-            continue
+            break
 
         if job is None:
             stop_after = True
@@ -144,6 +139,17 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
     batch_converter = alphabet.get_batch_converter()
     model.eval()
     model.to(device)
+
+    use_amp = device.type == "cuda"
+    if use_amp:
+        print("# GPU executor: AMP (float16) enabled")
+
+    if device.type == "cuda":
+        try:
+            model = torch.compile(model)
+            print("# GPU executor: torch.compile enabled (first batch will be slow)")
+        except Exception as e:
+            print(f"# GPU executor: torch.compile unavailable ({e})")
 
     pca_path = MODULES_DIR / "global_PCA" / "rnafm_pca_k16.npz"
     pca = PCAProjector(pca_path, device)
@@ -183,11 +189,13 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
 
         # GPU compute timing
         gpu_start = time.time()
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast(
+            device_type="cuda", dtype=torch.float16, enabled=use_amp
+        ):
             results = model(batch_tokens, repr_layers=[12])
         gpu_compute_time = time.time() - gpu_start
 
-        reps = results["representations"][12]
+        reps = results["representations"][12].float()
 
         token_embeds = []
         for i, seq in enumerate(sequences):
