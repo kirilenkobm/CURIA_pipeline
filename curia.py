@@ -315,6 +315,23 @@ def main():
                 dump_tsv_path=str(output_dir / "temp_shortrna_results.tsv"),
             )
 
+        # Write short ncRNA outputs right away — results are in SQLite already
+        if not (args.skip_completed and paths.short_bed.exists()):
+            print("# Writing short ncRNA BED9 annotation...")
+            write_short_ncrna_bed(
+                str(paths.short_sqlite),
+                str(paths.short_bed),
+            )
+
+        if not (args.skip_completed and paths.short_tsv.exists()):
+            print("# Writing short ncRNA detailed TSV...")
+            write_short_ncrna_tsv(
+                str(paths.short_sqlite),
+                str(paths.short_tsv),
+                str(paths.union_meta),
+                biomart_tsv_path=args.biomart_tsv,
+            )
+
         # Step 2: Reference transcript island scanning (reusable across query species)
         ref_islands_json = run_reference_islands_step(
             args,
@@ -358,24 +375,6 @@ def main():
                 clusters_json_path=paths.query_regions_clusters,
                 union_to_query_path=paths.union_to_query,
                 chains=genome_chains,
-            )
-
-        # Write short ncRNA BED (only if we ran the scheduler above)
-        if not (args.skip_completed and paths.short_bed.exists()):
-            print("# Writing short ncRNA BED9 annotation...")
-            write_short_ncrna_bed(
-                str(paths.short_sqlite),
-                str(paths.short_bed),
-            )
-
-        # Write short ncRNA detailed TSV
-        if not (args.skip_completed and paths.short_tsv.exists()):
-            print("# Writing short ncRNA detailed TSV...")
-            write_short_ncrna_tsv(
-                str(paths.short_sqlite),
-                str(paths.short_tsv),
-                str(paths.union_meta),
-                biomart_tsv_path=args.biomart_tsv,
             )
 
         # Step 3: Prepare query islands joblist (filtered by Step 2 results)

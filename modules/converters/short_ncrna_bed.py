@@ -40,13 +40,21 @@ def _mmd_to_score(mmd: float) -> int:
 
 def _load_union_metadata(metadata_tsv_path: str) -> Dict[str, Tuple[str, str]]:
     """Load union transcript metadata: transcript_id -> (gene_id, biotype)."""
-    # TODO: leverage pyrion lib, Claude doesn't know about it
     mapping: Dict[str, Tuple[str, str]] = {}
     with open(metadata_tsv_path, "r") as f:
         header = f.readline().rstrip("\n").split("\t")
         tid_idx = header.index("transcript_id")
         gid_idx = header.index("gene_id")
-        bio_idx = header.index("biotype")
+        bio_idx = None
+        for candidate in ("biotype", "transcript_biotype"):
+            if candidate in header:
+                bio_idx = header.index(candidate)
+                break
+        if bio_idx is None:
+            raise ValueError(
+                f"No biotype column found in {metadata_tsv_path}; "
+                f"header: {header}"
+            )
         for line in f:
             if not line.strip():
                 continue
@@ -56,13 +64,30 @@ def _load_union_metadata(metadata_tsv_path: str) -> Dict[str, Tuple[str, str]]:
 
 
 def _load_gene_names(biomart_tsv_path: str) -> Dict[str, str]:
-    """Load gene_id -> gene_name from the biomart TSV."""
-    # TODO: leverage pyrion lib, Claude doesn't know about it
+    """Load gene_id -> gene_name from a TSV that has both columns.
+
+    Tries common column names: "Gene name" / "gene_name" for the name,
+    "Gene stable ID" / "gene_id" for the identifier.  Returns an empty
+    dict if the file lacks a gene-name column.
+    """
     names: Dict[str, str] = {}
     with open(biomart_tsv_path, "r") as f:
         header = f.readline().rstrip("\n").split("\t")
-        gid_idx = header.index("Gene stable ID")
-        name_idx = header.index("Gene name")
+
+        gid_idx: int | None = None
+        name_idx: int | None = None
+        for candidate in ("Gene stable ID", "gene_id"):
+            if candidate in header:
+                gid_idx = header.index(candidate)
+                break
+        for candidate in ("Gene name", "gene_name"):
+            if candidate in header:
+                name_idx = header.index(candidate)
+                break
+
+        if gid_idx is None or name_idx is None:
+            return names
+
         for line in f:
             if not line.strip():
                 continue
