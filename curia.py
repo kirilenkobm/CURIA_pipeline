@@ -23,7 +23,7 @@ from modules.GPU_executor.gpu_executor import ExecutorConfig, run_gpu_executor
 from modules.utils.chrom_sizes import write_chrom_sizes_from_2bit
 from modules.utils.output_paths import OutputPaths
 from modules.converters.union_transcript import collapse_to_union_transcripts
-from modules.converters.short_ncrna_bed import write_short_ncrna_bed
+from modules.converters.short_ncrna_bed import write_short_ncrna_bed, write_short_ncrna_tsv
 from modules.converters.island_alignment_bed import write_island_alignment_beds
 from modules.converters.islands_bed import write_reference_islands_bed, write_query_islands_bed
 from modules.pipeline.toga_postprocess import write_rna_orthologous_regions
@@ -366,6 +366,16 @@ def main():
             write_short_ncrna_bed(
                 str(paths.short_sqlite),
                 str(paths.short_bed),
+            )
+
+        # Write short ncRNA detailed TSV
+        if not (args.skip_completed and paths.short_tsv.exists()):
+            print("# Writing short ncRNA detailed TSV...")
+            write_short_ncrna_tsv(
+                str(paths.short_sqlite),
+                str(paths.short_tsv),
+                str(paths.union_meta),
+                biomart_tsv_path=args.biomart_tsv,
             )
 
         # Step 3: Prepare query islands joblist (filtered by Step 2 results)

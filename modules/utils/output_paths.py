@@ -64,6 +64,10 @@ class OutputPaths:
         return self.intermediate_bed_dir / "short_rna_annotation_intermediate.bed"
 
     @property
+    def short_tsv(self) -> Path:
+        return self.intermediate_bed_dir / "short_ncRNA_details.tsv"
+
+    @property
     def query_regions_clusters(self) -> Path:
         return self.mappings_dir / "query_regions_clusters.json"
 
