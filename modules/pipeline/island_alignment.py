@@ -48,7 +48,12 @@ project_root = script_dir.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from modules.utils.mmd_utils import compute_mmd_matrix
+from modules.utils.mmd_utils import (
+    compute_mmd_matrix,
+    compute_mmd_matrix_fast,
+    estimate_gamma_global,
+    precompute_self_kernels_batch,
+)
 
 # ---------------------------------------------------------------------------
 # Island alignment configuration
@@ -486,10 +491,10 @@ def _compute_island_alignments(
     gene_id: str,
     ref_islands: List[Dict],
     q_islands: List[Dict],
-    ref_seqs: List[str],
-    q_seqs: List[str],
-    ref_win_embs: List[List[np.ndarray]],
-    q_win_embs: List[List[np.ndarray]],
+    ref_seqs: List[Optional[str]],
+    q_seqs: List[Optional[str]],
+    ref_win_embs: List[Optional[List[np.ndarray]]],
+    q_win_embs: List[Optional[List[np.ndarray]]],
     config: IslandAlignmentConfig,
     valid_pairs: Set[Tuple[int, int]],
 ) -> List[Dict]:
@@ -505,26 +510,31 @@ def _compute_island_alignments(
     n_ref = len(ref_islands)
     n_q = len(q_islands)
 
-    pair_results = []
+    # Estimate gamma ONCE from the full pool of active windows for this
+    # gene, so that XX/YY self-kernels can be precomputed once per island
+    # and reused across all (ri, qi) pair comparisons.
+    all_windows = [w for embs in ref_win_embs if embs for w in embs]
+    all_windows.extend(w for embs in q_win_embs if embs for w in embs)
+    gamma = estimate_gamma_global(all_windows)
+
+    ref_xx_per_island: List[Optional[np.ndarray]] = [None] * n_ref
+    query_yy_per_island: List[Optional[np.ndarray]] = [None] * n_q
+    for ri in {ri for ri, _ in valid_pairs}:
+        ref_xx_per_island[ri] = precompute_self_kernels_batch(
+            ref_win_embs[ri], gamma)
+    for qi in {qi for _, qi in valid_pairs}:
+        query_yy_per_island[qi] = precompute_self_kernels_batch(
+            q_win_embs[qi], gamma)
+
     mmd_matrices: Dict[Tuple[int, int], np.ndarray] = {}
 
-    def _do_pair(ri, qi):
-        mat, nc, ns = compute_mmd_matrix(ref_win_embs[ri], q_win_embs[qi],
-                                         config.mmd_skip,
-                                         config.mean_dist_threshold)
-        mmd_matrices[(ri, qi)] = mat
-        mr = max(2, min(len(ref_win_embs[ri]), len(q_win_embs[qi])) // 3)
-        mm, rl, rs, qs = best_diagonal_run(mat, min_run=mr)
-        pair_results.append({
-            "ri": ri, "qi": qi,
-            "ref_len": len(ref_seqs[ri]), "query_len": len(q_seqs[qi]),
-            "n_ref_win": len(ref_win_embs[ri]),
-            "n_q_win": len(q_win_embs[qi]),
-            "diag_mean_mmd": mm, "diag_run_len": rl,
-        })
-
     for ri, qi in sorted(valid_pairs):
-        _do_pair(ri, qi)
+        mat, nc, ns = compute_mmd_matrix_fast(
+            ref_win_embs[ri], q_win_embs[qi], gamma,
+            ref_xx_per_island[ri], query_yy_per_island[qi],
+            config.mmd_skip, config.mean_dist_threshold,
+        )
+        mmd_matrices[(ri, qi)] = mat
 
     # SW scoring
     sw_results = []
@@ -532,15 +542,9 @@ def _compute_island_alignments(
     for (ri, qi), mat in sorted(mmd_matrices.items()):
         sc, eff, mm, paths = island_match_score_sw(mat, config)
         sw_paths[(ri, qi)] = paths
-        old = next((r for r in pair_results
-                    if r["ri"] == ri and r["qi"] == qi), None)
         sw_results.append({
             "ri": ri, "qi": qi,
             "sw_score": sc, "sw_eff_nt": eff, "sw_mean_mmd": mm,
-            "sw_n_chains": len(paths),
-            "sw_path_len": sum(len(p) for p in paths),
-            "diag_mean_mmd": old["diag_mean_mmd"] if old else float("inf"),
-            "diag_run_len": old["diag_run_len"] if old else 0,
         })
 
     # ---- Quality filter + balanced greedy + collinearity ---------------------
@@ -763,20 +767,45 @@ async def _process_job(
     if not valid_pairs:
         return []
 
-    # Extract sequences
-    ref_seqs = [_fetch_seq(ref_acc, i["chrom"], i["start"], i["end"],
-                           i["strand"]) for i in ref_islands]
-    q_seqs = [_fetch_seq(query_acc, i["chrom"], i["start"], i["end"],
-                         i["strand"]) for i in q_islands]
+    # Only extract sequences and embed islands that participate in at
+    # least one valid pair — avoids wasted GPU work for islands excluded
+    # by provenance filtering.
+    active_ri = sorted({ri for ri, _ in valid_pairs})
+    active_qi = sorted({qi for _, qi in valid_pairs})
 
-    # Async phase: compute window embeddings via GPU executor
-    ref_embed_tasks = [_embed_island_windows(s, gpu, gene_id, f"R{ri}", config)
-                       for ri, s in enumerate(ref_seqs)]
-    q_embed_tasks = [_embed_island_windows(s, gpu, gene_id, f"Q{qi}", config)
-                     for qi, s in enumerate(q_seqs)]
-    all_embs = await asyncio.gather(*ref_embed_tasks, *q_embed_tasks)
-    ref_win_embs = list(all_embs[:n_ref])
-    q_win_embs = list(all_embs[n_ref:])
+    ref_seqs: List[Optional[str]] = [None] * n_ref
+    q_seqs: List[Optional[str]] = [None] * n_q
+    for ri in active_ri:
+        i = ref_islands[ri]
+        ref_seqs[ri] = _fetch_seq(ref_acc, i["chrom"], i["start"], i["end"],
+                                  i["strand"])
+    for qi in active_qi:
+        i = q_islands[qi]
+        q_seqs[qi] = _fetch_seq(query_acc, i["chrom"], i["start"], i["end"],
+                                i["strand"])
+
+    # Async phase: compute window embeddings only for active islands
+    ref_embed_tasks = {
+        ri: _embed_island_windows(ref_seqs[ri], gpu, gene_id, f"R{ri}", config)
+        for ri in active_ri
+    }
+    q_embed_tasks = {
+        qi: _embed_island_windows(q_seqs[qi], gpu, gene_id, f"Q{qi}", config)
+        for qi in active_qi
+    }
+    all_keys = list(ref_embed_tasks.keys()) + list(q_embed_tasks.keys())
+    all_coros = list(ref_embed_tasks.values()) + list(q_embed_tasks.values())
+    all_embs = await asyncio.gather(*all_coros)
+
+    ref_win_embs: List[Optional[List[np.ndarray]]] = [None] * n_ref
+    q_win_embs: List[Optional[List[np.ndarray]]] = [None] * n_q
+    idx = 0
+    for ri in active_ri:
+        ref_win_embs[ri] = all_embs[idx]
+        idx += 1
+    for qi in active_qi:
+        q_win_embs[qi] = all_embs[idx]
+        idx += 1
 
     # CPU-bound phase: offload to thread pool (numpy releases the GIL)
     loop = asyncio.get_running_loop()
