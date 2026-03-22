@@ -172,7 +172,7 @@ def run_reference_islands_step(
     Run Step 2: Reference transcript island scanning.
 
     This preprocessing step only needs to run once per reference genome.
-    Results are saved to --ref-preprocessed path and can be reused across query species.
+    Results are saved to preprocessed_reference_data.json.
     """
     ref_islands_json = paths.preprocessed_reference
 

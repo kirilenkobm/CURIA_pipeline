@@ -5,7 +5,6 @@ from pathlib import Path
 @dataclass(frozen=True)
 class OutputPaths:
     output_dir: Path
-    ref_preprocessed_override: Path | None = None
 
     # --- Final output directories ---
 
@@ -135,8 +134,6 @@ class OutputPaths:
 
     @property
     def preprocessed_reference(self) -> Path:
-        if self.ref_preprocessed_override is not None:
-            return self.ref_preprocessed_override
         return self.output_dir / "preprocessed_reference_data.json"
 
     @property

@@ -6,9 +6,8 @@ Checks for file existence, non-zero size, basic format validity,
 and chain-genome compatibility.
 """
 
-import gzip
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Set, Tuple
 
 from pyrion import TwoBitAccessor
 
@@ -223,11 +222,10 @@ def validate_bed_genome_compatibility(
 
 def validate_all_inputs(
     ref_bed12: str,
-    biomart_tsv: str,
+    reference_metadata: str,
     chain: str,
     ref_2bit: str,
     query_2bit: str,
-    ref_preprocessed: Optional[str] = None,
 ) -> None:
     """
     Comprehensive input validation.
@@ -240,7 +238,7 @@ def validate_all_inputs(
     # 1. Check existence and non-zero size
     input_files = {
         "Reference BED12": ref_bed12,
-        "Biomart TSV": biomart_tsv,
+        "Reference metadata TSV": reference_metadata,
         "Chain file": chain,
         "Reference 2bit": ref_2bit,
         "Query 2bit": query_2bit,
@@ -250,12 +248,6 @@ def validate_all_inputs(
     for name, path in input_files.items():
         try:
             validate_file_exists_and_nonempty(path, name)
-        except ValidationError as e:
-            errors.append(str(e))
-
-    if ref_preprocessed:
-        try:
-            validate_file_exists_and_nonempty(ref_preprocessed, "Preprocessed reference")
         except ValidationError as e:
             errors.append(str(e))
 
@@ -272,13 +264,13 @@ def validate_all_inputs(
     except ValidationError as e:
         raise ValidationError(f"BED12 validation failed:\n{e}")
 
-    # 3. Validate Biomart TSV
-    print("# Validating Biomart TSV...")
+    # 3. Validate reference metadata TSV
+    print("# Validating reference metadata TSV...")
     try:
-        num_biomart_rows = validate_tsv_has_header(biomart_tsv, "Biomart TSV")
-        print(f"  ✓ Biomart TSV valid: {num_biomart_rows} data rows")
+        num_metadata_rows = validate_tsv_has_header(reference_metadata, "Reference metadata TSV")
+        print(f"  ✓ Reference metadata TSV valid: {num_metadata_rows} data rows")
     except ValidationError as e:
-        raise ValidationError(f"Biomart TSV validation failed:\n{e}")
+        raise ValidationError(f"Reference metadata TSV validation failed:\n{e}")
 
     # 4. Validate 2bit files
     print("# Validating genome files...")

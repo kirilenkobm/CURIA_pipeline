@@ -118,24 +118,29 @@ By default, CURIA automatically cleans up and organizes outputs into a user-frie
 output_dir/
 ├── query_annotation/
 │   ├── short_ncRNA.bed              # Short ncRNA annotations (≤160bp)
-│   ├── lncRNA_islands.bed           # Aligned lncRNA islands
-│   ├── reference_islands.bed        # Reference islands (QC)
-│   └── query_islands.bed            # Query islands (QC)
+│   ├── short_ncRNA_details.tsv      # Detailed short ncRNA results
+│   ├── lncRNA_islands.bed           # Aligned lncRNA islands in query
+│   ├── lncRNA_islands_reference.bed # Matching reference islands
+│   ├── reference_islands.bed        # All reference islands (QC)
+│   └── query_islands.bed            # All query islands (QC)
 ├── island_alignment_results.tsv     # Island alignment scores
-├── preprocessed_reference.json      # Reusable reference data
+├── preprocessed_reference_data.json # Reusable reference data
 ├── reference_union_transcripts.bed  # Collapsed reference isoforms
 ├── reference_union_transcripts_metadata.tsv
 ├── mappings/
 │   ├── union_to_isoforms.json       # Transcript → isoforms mapping
-│   └── union_to_query.json          # Transcript → query regions mapping
+│   ├── union_to_query.json          # Transcript → query regions mapping
+│   └── query_regions_clusters.json  # Merged query regions
 └── toga_results/
-    ├── rna_orthologous_regions.tsv  # RNA orthology predictions
-    └── toga_orthologous_regions.tsv # Original TOGA output
+    ├── rna_orthologous_regions.tsv          # RNA orthology predictions
+    ├── toga_orthologous_regions.tsv         # Original TOGA output
+    └── original_toga_classification_table.tsv # TOGA classification scores
 ```
 
 **Cleanup options:**
 - Use `--no-cleanup` to keep all intermediate files (SQLite DBs, joblists, etc.)
-- Run `./cleanup_outputs.py <output_dir>` to cleanup existing pipeline outputs
+
+See [OUTPUT_STRUCTURE.md](OUTPUT_STRUCTURE.md) for detailed file descriptions.
 
 ---
 
