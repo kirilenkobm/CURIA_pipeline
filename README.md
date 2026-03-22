@@ -4,6 +4,16 @@
 
 CURIA identifies conserved non-coding RNAs across distantly related species by combining genome alignments, orthology prediction, and RNA foundation model embeddings.
 
+## Status
+
+Research prototype. Preprint coming soon (April 2026).
+
+## Why CURIA
+
+- Works beyond sequence conservation using structure-aware embeddings  
+- Scales to genome-wide analysis via synteny constraints  
+- Handles long lncRNAs via localized "island" representation
+
 ---
 
 ## Installation
@@ -37,20 +47,23 @@ If you already have the weights elsewhere, run `python download_rnafm_model.py -
 # Optional: benchmark optimal GPU batch size for your hardware
 python modules/GPU_executor/benchmark_batch_size.py
 
-# Run smoke test (~1-2 minutes on strong machines)
+# Run smoke test (<1 minute on strong machines)
 ./curia.py \
   --ref-bed12 input_data/reference_annotation/smoke_test.bed \
-  --biomart-tsv input_data/reference_annotation/smoke_test.metadata.tsv \
+  --reference-metadata input_data/reference_annotation/smoke_test.metadata.tsv \
   --chain input_data/chains/smoke_test.chain.gz \
   --ref-2bit input_data/2bit/hg38.test.subset.2bit \
   --query-2bit input_data/2bit/mm39.test.subset.2bit \
   --output-dir smoke_test_output \
+  --cpu-max-workers 12 \
+  --gpu-min-batch 4 \
+  --gpu-max-batch 16 \
   --gpu-logger
 
 # For a more comprehensive test (~20 minutes)
 ./curia.py \
   --ref-bed12 input_data/reference_annotation/test_sample.bed \
-  --biomart-tsv input_data/reference_annotation/test_sample.metadata.tsv \
+  --reference-metadata input_data/reference_annotation/test_sample.metadata.tsv \
   --chain input_data/chains/test_sample.chain.gz \
   --ref-2bit input_data/2bit/hg38.test.subset.2bit \
   --query-2bit input_data/2bit/mm39.test.subset.2bit \
@@ -62,7 +75,8 @@ python modules/GPU_executor/benchmark_batch_size.py
 ## Requirements
 
 **Input files:**
-- Reference annotation (BED12) and metadata (TSV with transcript-to-biotype mappings)
+- Reference annotation (BED12)
+- Reference metadata (TSV with gene name and biotype mappings; can be downloaded from Ensembl BioMart with attributes: transcript ID, gene name, and transcript biotype)
 - Query and reference genomes (2bit format)
 - Genome alignment chains
 
@@ -78,12 +92,11 @@ python modules/GPU_executor/benchmark_batch_size.py
 ```bash
 ./curia.py \
   --ref-bed12 $REFERENCE_BED12 \
-  --biomart-tsv $REFERENCE_METADATA \
+  --reference-metadata $REFERENCE_METADATA \
   --chain $ALIGNMENT_CHAINS \
   --ref-2bit $REF_2BIT \
   --query-2bit $QUERY_2BIT \
   --output-dir $OUTPUT_DIR \
-  --ref-preprocessed $REFERENCE_DATA \  # optional: reuse preprocessed reference
   --cpu-max-workers 128 \               # max concurrent async workers (default: 128)
   --gpu-max-batch 160 \                 # max GPU batch size (default: 160, tune with benchmark script)
   --gpu-min-batch 32 \                  # min batch size before timeout (default: 32)
@@ -94,7 +107,6 @@ python modules/GPU_executor/benchmark_batch_size.py
 - `--cpu-max-workers` controls concurrent async I/O workers (not threads), allowing high parallelism for GPU-bound tasks
 - `--gpu-max-batch` sets maximum batch size sent to GPU; use `python modules/GPU_executor/benchmark_batch_size.py` to find optimal value for your hardware
 - `--gpu-min-batch` sets minimum batch size before GPU executor times out and processes incomplete batch
-- `--ref-preprocessed` directory contains reference data that only needs to be computed once per reference species and can be reused across multiple query genomes
 
 ---
 
@@ -129,17 +141,22 @@ output_dir/
 
 ## How It Works
 
-1. **Orthologous loci prediction** — RNA TOGA identifies candidate ncRNA regions in the query genome
-2. **Short ncRNA annotation** — Dedicated MMD-based pipeline for ncRNAs ≤160bp (miRNA, tRNA, snoRNA, etc.)
-3. **Reference island scanning** — RNA-FM identifies functional islands in reference lncRNAs where embeddings separate signal from background; results are reusable across queries
-4. **Query island scanning** — RNA-FM scans orthologous query lncRNA loci for islands (computational bottleneck)
-5. **Island alignment** — Windowed MMD matching of reference and query islands based on RNA-FM embedding similarity
+1. **Orthologous loci prediction** — candidate regions are identified using genome alignment chains and a TOGA-based classifier  
+2. **Short ncRNA refinement** — compact ncRNAs are localized using MMD-based matching in embedding space  
+3. **Island detection** — RNA-FM identifies structured regions ("islands") within lncRNAs  
+4. **Query scanning** — candidate query regions are scanned for islands  
+5. **Island alignment** — reference and query islands are matched using MMD over embedding distributions
+
 
 ---
 
 ## Validation
 
-CURIA has been validated on human–mouse, human–dog, and human–cow comparisons, successfully recovering known conserved lncRNAs and structured ncRNAs. Full validation details are provided in the preprint (in preparation).
+CURIA has been evaluated on human–mouse, human–dog, and human–cow comparisons.  
+For short ncRNAs, the method recovers a substantial fraction of annotated loci with high boundary accuracy.  
+For lncRNAs, CURIA identifies conserved subregions ("islands"), with a subset reproducible across species.
+
+Full validation details are provided in the preprint (in preparation).
 
 ---
 
@@ -147,7 +164,9 @@ CURIA has been validated on human–mouse, human–dog, and human–cow comparis
 
 If you use CURIA, please cite:
 
-> Kirilenko, B.M., *CURIA: Cross-species Unified ncRNA Inference and Annotation*, preprint in preparation, 2026.
+Kirilenko, B.M. (2026).  
+CURIA: Cross-species Unified ncRNA Inference and Annotation.  
+bioRxiv (preprint).
 
 ---
 

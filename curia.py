@@ -42,14 +42,10 @@ from modules.utils.input_validation import validate_all_inputs, ValidationError
 def parse_args():
     parser = argparse.ArgumentParser(description="CURIA pipeline")
     parser.add_argument("--ref-bed12", required=True, help="Reference annotation in BED12 format")
-    parser.add_argument("--biomart-tsv", required=True, help="Biomart TSV (gene/biotype mapping)")
+    parser.add_argument("--reference-metadata", required=True, help="Reference metadata TSV (gene/biotype mapping)")
     parser.add_argument("--chain", required=True, help="Chain file (can be .gz)")
     parser.add_argument("--ref-2bit", required=True, help="Reference genome in .2bit")
     parser.add_argument("--query-2bit", required=True, help="Query genome in .2bit")
-    parser.add_argument(
-        "--ref-preprocessed",
-        help="Path to preprocessed reference lncRNA data (optional)",
-    )
     parser.add_argument("--gpu-max-batch", type=int, default=160, help="Max GPU batch size")
     parser.add_argument("--gpu-min-batch", type=int, default=32, help="Min GPU batch size before timeout")
     parser.add_argument("--cpu-max-workers", type=int, default=128, help="Max concurrent CPU workers for all pipeline steps")
@@ -109,7 +105,7 @@ def run_toga_step(
     write_chrom_sizes_from_2bit(args.ref_2bit, paths.chrom_sizes)  # noqa
     collapse_to_union_transcripts(
         args.ref_bed12,
-        args.biomart_tsv,
+        args.reference_metadata,
         paths.union_bed,  # noqa
         paths.union_meta,  # noqa
         union_to_isoforms_path=str(paths.union_to_isoforms),
@@ -242,11 +238,10 @@ def main():
         try:
             validate_all_inputs(
                 args.ref_bed12,
-                args.biomart_tsv,
+                args.reference_metadata,
                 args.chain,
                 args.ref_2bit,
                 args.query_2bit,
-                args.ref_preprocessed,
             )
         except ValidationError as e:
             print(f"\n# INPUT VALIDATION FAILED:\n{e}\n", file=sys.stderr)
@@ -256,10 +251,7 @@ def main():
         proc, input_q, output_q = start_gpu_executor(args)
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        ref_preprocessed_override = None
-        if args.ref_preprocessed:
-            ref_preprocessed_override = Path(args.ref_preprocessed)
-        paths = OutputPaths(output_dir, ref_preprocessed_override=ref_preprocessed_override)
+        paths = OutputPaths(output_dir)
 
         # Ensure output directories exist
         paths.query_annotation_dir.mkdir(parents=True, exist_ok=True)
@@ -330,7 +322,7 @@ def main():
                 str(paths.short_sqlite),
                 str(paths.short_tsv),
                 str(paths.union_meta),
-                biomart_tsv_path=args.biomart_tsv,
+                biomart_tsv_path=args.reference_metadata,
             )
 
         # Step 2: Reference transcript island scanning (reusable across query species)
