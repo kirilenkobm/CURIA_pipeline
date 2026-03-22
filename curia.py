@@ -35,7 +35,7 @@ from modules.pipeline.island_alignment import (
     write_island_alignment_joblist,
     run_island_alignment_scheduler,
 )
-from modules.utils.cleanup_outputs import cleanup_and_reorganize
+from modules.utils.cleanup_outputs import cleanup_temp_files
 from modules.utils.input_validation import validate_all_inputs, ValidationError
 
 
@@ -261,10 +261,11 @@ def main():
             ref_preprocessed_override = Path(args.ref_preprocessed)
         paths = OutputPaths(output_dir, ref_preprocessed_override=ref_preprocessed_override)
 
-        # Ensure mappings, intermediate sqlite, toga results, and joblists directories exist
+        # Ensure output directories exist
+        paths.query_annotation_dir.mkdir(parents=True, exist_ok=True)
+        paths.toga_results_dir.mkdir(parents=True, exist_ok=True)
         paths.mappings_dir.mkdir(parents=True, exist_ok=True)
         paths.intermediate_sqlite_dir.mkdir(parents=True, exist_ok=True)
-        paths.toga_results_dir.mkdir(parents=True, exist_ok=True)
         paths.joblists_dir.mkdir(parents=True, exist_ok=True)
 
         run_toga_step(
@@ -347,7 +348,6 @@ def main():
             print("# [SKIP] Reference islands BED exists, skipping generation.")
         else:
             print("# Writing reference islands BED12...")
-            paths.intermediate_bed_dir.mkdir(parents=True, exist_ok=True)
             write_reference_islands_bed(
                 str(ref_islands_json),
                 str(paths.reference_islands_bed),
@@ -419,7 +419,6 @@ def main():
             print("# [SKIP] Query islands BED exists, skipping generation.")
         else:
             print("# Writing query islands BED12...")
-            paths.intermediate_bed_dir.mkdir(parents=True, exist_ok=True)
             write_query_islands_bed(
                 str(paths.query_islands_json),
                 str(paths.union_to_query),
@@ -472,7 +471,6 @@ def main():
             print("# [SKIP] Aligned islands BED files exist, skipping BED generation.")
         else:
             print("# Writing aligned islands BED12 files...")
-            paths.intermediate_bed_dir.mkdir(parents=True, exist_ok=True)
             write_island_alignment_beds(
                 str(paths.island_alignment_results),
                 str(ref_islands_json),
@@ -483,7 +481,7 @@ def main():
 
         # Cleanup and reorganize outputs (unless --no-cleanup)
         if not args.no_cleanup:
-            cleanup_and_reorganize(output_dir, verbose=True)
+            cleanup_temp_files(output_dir, verbose=True)
         else:
             print("# [SKIP] Cleanup disabled via --no-cleanup flag")
 

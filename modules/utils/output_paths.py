@@ -7,17 +7,31 @@ class OutputPaths:
     output_dir: Path
     ref_preprocessed_override: Path | None = None
 
-    @property
-    def union_bed(self) -> Path:
-        return self.output_dir / "union_transcripts.bed"
+    # --- Final output directories ---
 
     @property
-    def union_meta(self) -> Path:
-        return self.output_dir / "union_transcripts_metadata.tsv"
+    def query_annotation_dir(self) -> Path:
+        return self.output_dir / "query_annotation"
 
     @property
     def toga_results_dir(self) -> Path:
-        return self.output_dir / "toga_mini_results"
+        return self.output_dir / "toga_results"
+
+    @property
+    def mappings_dir(self) -> Path:
+        return self.output_dir / "mappings"
+
+    # --- Union transcripts ---
+
+    @property
+    def union_bed(self) -> Path:
+        return self.output_dir / "reference_union_transcripts.bed"
+
+    @property
+    def union_meta(self) -> Path:
+        return self.output_dir / "reference_union_transcripts_metadata.tsv"
+
+    # --- TOGA results ---
 
     @property
     def toga_regions(self) -> Path:
@@ -35,6 +49,34 @@ class OutputPaths:
     def chrom_sizes(self) -> Path:
         return self.toga_results_dir / "reference_chrom_sizes.tsv"
 
+    # --- Query annotation BED/TSV outputs (final) ---
+
+    @property
+    def short_bed(self) -> Path:
+        return self.query_annotation_dir / "short_ncRNA.bed"
+
+    @property
+    def short_tsv(self) -> Path:
+        return self.query_annotation_dir / "short_ncRNA_details.tsv"
+
+    @property
+    def reference_islands_bed(self) -> Path:
+        return self.query_annotation_dir / "reference_islands.bed"
+
+    @property
+    def query_islands_bed(self) -> Path:
+        return self.query_annotation_dir / "query_islands.bed"
+
+    @property
+    def aligned_islands_ref_bed(self) -> Path:
+        return self.query_annotation_dir / "lncRNA_islands_reference.bed"
+
+    @property
+    def aligned_islands_query_bed(self) -> Path:
+        return self.query_annotation_dir / "lncRNA_islands.bed"
+
+    # --- Temporary / internal paths ---
+
     @property
     def joblists_dir(self) -> Path:
         return self.output_dir / "joblists"
@@ -42,6 +84,14 @@ class OutputPaths:
     @property
     def short_joblist(self) -> Path:
         return self.joblists_dir / "short_ncRNA_joblist.txt"
+
+    @property
+    def query_islands_joblist(self) -> Path:
+        return self.joblists_dir / "query_islands_scanner_joblist.txt"
+
+    @property
+    def island_alignment_joblist(self) -> Path:
+        return self.joblists_dir / "island_alignment_joblist.txt"
 
     @property
     def intermediate_sqlite_dir(self) -> Path:
@@ -52,20 +102,18 @@ class OutputPaths:
         return self.intermediate_sqlite_dir / "short_ncRNA_results.sqlite"
 
     @property
-    def mappings_dir(self) -> Path:
-        return self.output_dir / "mappings"
+    def reference_islands_sqlite(self) -> Path:
+        return self.intermediate_sqlite_dir / "reference_islands.sqlite"
 
     @property
-    def intermediate_bed_dir(self) -> Path:
-        return self.output_dir / "intermediate_bed_files"
+    def query_islands_sqlite(self) -> Path:
+        return self.intermediate_sqlite_dir / "query_islands.sqlite"
 
     @property
-    def short_bed(self) -> Path:
-        return self.intermediate_bed_dir / "short_rna_annotation_intermediate.bed"
+    def island_alignment_sqlite(self) -> Path:
+        return self.intermediate_sqlite_dir / "island_alignment_results.sqlite"
 
-    @property
-    def short_tsv(self) -> Path:
-        return self.intermediate_bed_dir / "short_ncRNA_details.tsv"
+    # --- Mappings ---
 
     @property
     def query_regions_clusters(self) -> Path:
@@ -80,51 +128,17 @@ class OutputPaths:
         return self.mappings_dir / "union_to_isoforms.json"
 
     @property
+    def query_islands_json(self) -> Path:
+        return self.mappings_dir / "query_islands.json"
+
+    # --- Top-level results ---
+
+    @property
     def preprocessed_reference(self) -> Path:
         if self.ref_preprocessed_override is not None:
             return self.ref_preprocessed_override
         return self.output_dir / "preprocessed_reference_data.json"
 
     @property
-    def query_islands_joblist(self) -> Path:
-        return self.joblists_dir / "query_islands_scanner_joblist.txt"
-
-    @property
-    def reference_islands_sqlite(self) -> Path:
-        return self.intermediate_sqlite_dir / "reference_islands.sqlite"
-
-    @property
-    def query_islands_sqlite(self) -> Path:
-        return self.intermediate_sqlite_dir / "query_islands.sqlite"
-
-    @property
-    def query_islands_json(self) -> Path:
-        return self.mappings_dir / "query_islands.json"
-
-    @property
-    def island_alignment_joblist(self) -> Path:
-        return self.joblists_dir / "island_alignment_joblist.txt"
-
-    @property
     def island_alignment_results(self) -> Path:
         return self.output_dir / "island_alignment_results.tsv"
-
-    @property
-    def aligned_islands_ref_bed(self) -> Path:
-        return self.intermediate_bed_dir / "aligned_islands_reference.bed"
-
-    @property
-    def aligned_islands_query_bed(self) -> Path:
-        return self.intermediate_bed_dir / "aligned_islands_query.bed"
-
-    @property
-    def reference_islands_bed(self) -> Path:
-        return self.intermediate_bed_dir / "reference_islands.bed"
-
-    @property
-    def island_alignment_sqlite(self) -> Path:
-        return self.intermediate_sqlite_dir / "island_alignment_results.sqlite"
-
-    @property
-    def query_islands_bed(self) -> Path:
-        return self.intermediate_bed_dir / "query_islands.bed"

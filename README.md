@@ -26,7 +26,8 @@ source .venv/bin/activate
 > **macOS note:** OpenMP is required for scikit-learn and other numerical libraries.
 > Install it once with: `brew install libomp`
 
-The RNA-FM model (~1.1GB) downloads automatically on first run, or use `./download_model.py` to download manually.
+The RNA-FM model (~1.1GB) downloads automatically on first run, or use `./download_rnafm_model.py` to download manually.
+If you already have the weights elsewhere, run `python download_rnafm_model.py --show-dir` to see where to place them.
 
 ---
 
