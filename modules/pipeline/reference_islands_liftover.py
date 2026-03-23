@@ -229,7 +229,7 @@ def _project_flanked_islands(
 
             q_pad = island_len + query_extra_flank
             q_start = max(0, q_start - q_pad)
-            q_end = q_end + q_pad
+            q_end = min(q_end + q_pad, chain.q_size)
 
             query_strand = 1 if meta["transcript_strand"] == meta["chain_strand"] else -1
             stats["projected_ok"] += 1

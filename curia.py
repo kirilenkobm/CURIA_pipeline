@@ -46,7 +46,11 @@ from modules.pipeline.island_alignment import (
     run_island_alignment_scheduler,
 )
 from modules.utils.cleanup_outputs import cleanup_temp_files
-from modules.utils.input_validation import validate_all_inputs, ValidationError
+from modules.utils.input_validation import (
+    validate_all_inputs,
+    validate_chain_2bit_compatibility,
+    ValidationError,
+)
 
 
 def parse_args():
@@ -361,6 +365,12 @@ def main():
         print("# Loading genome alignment chains...")
         genome_chains = read_chain_file(args.chain, 25_000)
         print(f"# Loaded {len(genome_chains)} chains")
+
+        # Validate chain chromosomes match the 2bit genomes (fast — chains
+        # are already in memory, 2bit headers are instant to read).
+        validate_chain_2bit_compatibility(
+            genome_chains, args.ref_2bit, args.query_2bit,
+        )
 
         # Step 2.5: Liftover reference islands → targeted query regions
         # Replaces the legacy merge_query_regions (full transcript → full query locus)

@@ -140,3 +140,4 @@ draft/
 /validation/bulk_validation_overall.tsv
 /validation/bulk_validation_summary.tsv
 /cleanup_quick_test_results.sh
+/preprint_results/

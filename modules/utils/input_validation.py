@@ -145,6 +145,44 @@ def validate_2bit_file(twobit_path: str, file_type: str) -> Set[str]:
         raise ValidationError(f"Failed to open {file_type} {twobit_path}: {e}")
 
 
+def _diagnose_naming_mismatch(
+    chain_chroms: Set[str],
+    twobit_chroms: Set[str],
+) -> str:
+    """Try to identify the naming convention mismatch between chain and 2bit."""
+    if not chain_chroms or not twobit_chroms:
+        return ""
+
+    missing = chain_chroms - twobit_chroms
+
+    if not missing:
+        return ""
+
+    # Check version suffix mismatch: chain has "NW_123" but 2bit has "NW_123.1"
+    strip_version = {c.rsplit(".", 1)[0]: c for c in twobit_chroms if "." in c}
+    fixable_by_adding = sum(1 for c in missing if c in strip_version)
+    if fixable_by_adding > len(missing) * 0.5:
+        sample_chain = sorted(missing)[0]
+        sample_2bit = strip_version.get(sample_chain, "?")
+        return (
+            f"    Likely cause: accession version suffix mismatch.\n"
+            f"    Chain uses '{sample_chain}' but 2bit has '{sample_2bit}'.\n"
+            f"    The chain and 2bit files may be from different assembly versions."
+        )
+
+    # Check chr-prefix mismatch: chain has "chr1" but 2bit has "1" or vice versa
+    add_chr = {f"chr{c}": c for c in twobit_chroms if not c.startswith("chr")}
+    strip_chr = {c[3:]: c for c in twobit_chroms if c.startswith("chr")}
+    fixable_add = sum(1 for c in missing if c in add_chr)
+    fixable_strip = sum(1 for c in missing if c in strip_chr)
+    if fixable_add > len(missing) * 0.5:
+        return "    Likely cause: 2bit lacks 'chr' prefix that chains expect."
+    if fixable_strip > len(missing) * 0.5:
+        return "    Likely cause: 2bit uses 'chr' prefix but chains do not."
+
+    return ""
+
+
 def check_chain_genome_compatibility(
     ref_2bit_chroms: Set[str],
     query_2bit_chroms: Set[str],
@@ -162,34 +200,90 @@ def check_chain_genome_compatibility(
     chain_ref_missing = chain_ref_chroms - ref_2bit_chroms
     if chain_ref_missing:
         pct_missing = 100 * len(chain_ref_missing) / len(chain_ref_chroms)
-        warnings.append(
-            f"  Chain file references {len(chain_ref_missing)} chromosomes "
+        msg = (
+            f"  Chain file references {len(chain_ref_missing)} reference chromosomes "
             f"not found in reference 2bit ({pct_missing:.1f}% of chain chroms):\n"
             f"    {', '.join(sorted(list(chain_ref_missing)[:10]))}"
             + ("..." if len(chain_ref_missing) > 10 else "")
         )
+        diagnosis = _diagnose_naming_mismatch(chain_ref_chroms, ref_2bit_chroms)
+        if diagnosis:
+            msg += f"\n{diagnosis}"
+        warnings.append(msg)
 
     # Check query genome overlap
     chain_query_missing = chain_query_chroms - query_2bit_chroms
     if chain_query_missing:
         pct_missing = 100 * len(chain_query_missing) / len(chain_query_chroms)
-        warnings.append(
-            f"  Chain file references {len(chain_query_missing)} chromosomes "
+        msg = (
+            f"  Chain file references {len(chain_query_missing)} query chromosomes "
             f"not found in query 2bit ({pct_missing:.1f}% of chain chroms):\n"
             f"    {', '.join(sorted(list(chain_query_missing)[:10]))}"
             + ("..." if len(chain_query_missing) > 10 else "")
         )
+        diagnosis = _diagnose_naming_mismatch(chain_query_chroms, query_2bit_chroms)
+        if diagnosis:
+            msg += f"\n{diagnosis}"
+        warnings.append(msg)
 
     # Check if any chains are usable
     ref_usable = len(chain_ref_chroms - chain_ref_missing)
     query_usable = len(chain_query_chroms - chain_query_missing)
 
     if ref_usable == 0:
-        warnings.append("  ERROR: No chain chromosomes match reference genome!")
+        warnings.append("  FATAL: No chain chromosomes match reference genome!")
     if query_usable == 0:
-        warnings.append("  ERROR: No chain chromosomes match query genome!")
+        warnings.append("  FATAL: No chain chromosomes match query genome!")
 
     return warnings
+
+
+def validate_chain_2bit_compatibility(
+    chains,
+    ref_2bit_path: str,
+    query_2bit_path: str,
+) -> None:
+    """
+    Fast chain-vs-2bit chromosome validation using already-loaded chains.
+
+    Extracts reference/query chromosome sets from the in-memory chain
+    collection and compares against 2bit headers (instant reads).
+    Raises ValidationError on fatal mismatches; prints warnings otherwise.
+    """
+    chain_ref_chroms = set(chains.get_reference_chromosomes())
+    chain_query_chroms = set(chains.get_query_chromosomes())
+
+    ref_2bit_chroms = set(TwoBitAccessor(ref_2bit_path).chrom_sizes())
+    query_2bit_chroms = set(TwoBitAccessor(query_2bit_path).chrom_sizes())
+
+    print(f"# Chain-genome compatibility check:")
+    print(f"#   Chain:     {len(chain_ref_chroms)} ref chroms, {len(chain_query_chroms)} query chroms")
+    print(f"#   Ref 2bit:  {len(ref_2bit_chroms)} sequences")
+    print(f"#   Query 2bit: {len(query_2bit_chroms)} sequences")
+
+    warnings = check_chain_genome_compatibility(
+        ref_2bit_chroms, query_2bit_chroms,
+        chain_ref_chroms, chain_query_chroms,
+    )
+
+    if not warnings:
+        print(f"#   ✓ All chain chromosomes found in both genomes")
+        return
+
+    has_fatal = any("FATAL:" in w for w in warnings)
+
+    if has_fatal:
+        print("# FATAL chain-genome incompatibility detected:")
+        for w in warnings:
+            print(w)
+        raise ValidationError(
+            "Chain file chromosomes do not match genome 2bit files. "
+            "Ensure chain, reference 2bit, and query 2bit are from the same assemblies."
+        )
+
+    print("# Chain-genome compatibility warnings:")
+    for w in warnings:
+        print(w)
 
 
 def validate_bed_genome_compatibility(

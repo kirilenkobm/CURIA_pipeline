@@ -146,7 +146,11 @@ def _extract_sequence(
     start: int,
     end: int,
     strand: int,
+    chrom_sizes: Optional[Dict[str, int]] = None,
 ) -> str:
+    if chrom_sizes and chrom in chrom_sizes:
+        end = min(end, chrom_sizes[chrom])
+        start = min(start, end)
     seq_obj = accessor.fetch(chrom, start, end)
     if strand == -1:
         seq_obj = seq_obj.reverse_complement()
@@ -328,6 +332,7 @@ async def _process_query_island_scan(
     smooth_window: int = 5,
     prob_threshold: float = 0.25,
     batch_size: int = 128,
+    query_chrom_sizes: Optional[Dict[str, int]] = None,
 ) -> List[Dict]:
     """
     Process a single query region:
@@ -341,7 +346,10 @@ async def _process_query_island_scan(
     from modules.logreg_signal_noise.apply_logreg import score_embeddings
 
     # Extract full sequence
-    sequence = _extract_sequence(query_accessor, job.chrom, job.start, job.end, job.strand)
+    sequence = _extract_sequence(
+        query_accessor, job.chrom, job.start, job.end, job.strand,
+        chrom_sizes=query_chrom_sizes,
+    )
     seq_len = len(sequence)
 
     if seq_len < window_size:
@@ -424,6 +432,7 @@ async def _worker(
     t0: float,
     total_jobs: int,
     max_concurrent: int,
+    query_chrom_sizes: Optional[Dict[str, int]] = None,
 ) -> None:
     while True:
         job = await job_queue.get()
@@ -448,6 +457,7 @@ async def _worker(
                 smooth_window,
                 prob_threshold,
                 batch_size,
+                query_chrom_sizes=query_chrom_sizes,
             )
             for island in islands:
                 await result_queue.put(island)
@@ -487,6 +497,7 @@ def run_query_islands_scanner(
 
         logreg_model = load_logreg_model(logreg_model_path)
         query_accessor = TwoBitAccessor(query_2bit_path)
+        query_chrom_sizes = dict(query_accessor.chrom_sizes())
 
         loop = asyncio.get_running_loop()
         gpu = GPUClient(gpu_input_queue, gpu_output_queue, loop)
@@ -517,6 +528,7 @@ def run_query_islands_scanner(
                     t0,
                     total_jobs,
                     max_concurrent,
+                    query_chrom_sizes=query_chrom_sizes,
                 )
             )
             for _ in range(max_concurrent)
