@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 
+import os
+
+# Pin BLAS threading to 1 BEFORE numpy/OpenBLAS is loaded.
+# The island alignment step uses its own ThreadPoolExecutor for parallelism;
+# internal BLAS threading causes oversubscription and OpenBLAS heap corruption
+# ("corrupted size vs. prev_size") under high thread contention.
+for _var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS",
+             "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
+del _var
+
 import argparse
 import multiprocessing as mp
-import os
 import shutil
 import signal
 import subprocess
