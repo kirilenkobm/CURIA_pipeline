@@ -127,7 +127,6 @@ draft/
 *.lof
 *.lot
 *.synctex.gz
-*.pdf
 
 # Manual exclusion
 /modules/rna_toga/lncrna_comparison_for_review.tsv
