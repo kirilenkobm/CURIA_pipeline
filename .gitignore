@@ -86,6 +86,7 @@ sample_preprocessing_reference/
 quick_test/
 smoke_test_output/
 hg38_vs_mm39/
+!preprint_results/hg38_vs_mm39
 hg38_vs_mm39_*
 big_test/
 todo.txt
