@@ -1,0 +1,11 @@
+Species	Common name	Species Taxonomy ID	Taxonomic Lineage	Assembly name	NCBI accession / source	contig N50 (bp)	scaffold N50 (bp)
+Bos taurus	cattle	9913	Mammalia; Theria; Eutheria; Boreoeutheria; Laurasiatheria; Artiodactyla; Ruminantia; Pecora; Bovidae; Bovinae; Bos	bosTau9	GCF_002263795.1	25896116	103308737
+Dasypus novemcinctus	nine-banded armadillo	9361	Mammalia; Theria; Eutheria; Xenarthra; Cingulata; Dasypodidae; Dasypus	dasNov3	GCF_000208655.1	26277	1687935
+Equus caballus	horse	9796	Mammalia; Theria; Eutheria; Boreoeutheria; Laurasiatheria; Perissodactyla; Equidae; Equus; Equus	equCab3	GCF_002863925.1	1502753	87230776
+Erinaceus europaeus	western European hedgehog	9365	Mammalia; Theria; Eutheria; Boreoeutheria; Laurasiatheria; Eulipotyphla; Erinaceidae; Erinaceinae; Erinaceus	eriEur2	GCF_000296755.1	21359	3264618
+Felis catus	domestic cat	9685	Mammalia; Theria; Eutheria; Boreoeutheria; Laurasiatheria; Carnivora; Feliformia; Felidae; Felinae; Felis	felCat9	GCF_000181335.3	41915695	83967707
+Macaca mulatta	Rhesus monkey	9544	Mammalia; Theria; Eutheria; Boreoeutheria; Euarchontoglires; Primates; Haplorrhini; Simiiformes; Catarrhini; Cercopithecoidea; Cercopithecidae; Cercopithecinae; Macaca	rheMac10	GCF_003339765.1	46608966	82346004
+Monodelphis domestica	gray short-tailed opossum	13616	Mammalia; Theria; Metatheria; Didelphimorphia; Didelphidae; Didelphinae; Monodelphis	monDom5	GCF_000002295.2	108014	59809810
+Mus musculus	house mouse	10090	Mammalia; Theria; Eutheria; Boreoeutheria; Euarchontoglires; Glires; Rodentia; Myomorpha; Muroidea; Muridae; Murinae; Mus; Mus	mm39	GCF_000001635.27	59462871	106145001
+Rattus norvegicus	Norway rat	10116	Mammalia; Theria; Eutheria; Boreoeutheria; Euarchontoglires; Glires; Rodentia; Myomorpha; Muroidea; Muridae; Murinae; Rattus	rn7	GCF_015227675.2	29198295	135012528
+Sus scrofa	pig	9823	Mammalia; Theria; Eutheria; Boreoeutheria; Laurasiatheria; Artiodactyla; Suina; Suidae; Sus	susScr11	GCF_000003025.6	48231277	88231837
