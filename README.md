@@ -2,19 +2,18 @@
 
 **Cross-species Unified ncRNA Inference and Annotation**
 
-CURIA identifies conserved non-coding RNAs across distantly related species by combining genome alignments, orthology prediction, and RNA foundation model embeddings.
+CURIA is a research prototype for cross-species ncRNA annotation using genome alignment chains, orthology-guided locus projection, and RNA foundation model embeddings.
+
+It supports:
+- short ncRNA refinement by local matching in embedding space
+- long ncRNA analysis via localized structured subregions (“islands”)
+- genome-scale analysis by restricting search to syntenic candidate loci
+
+For methodological details, validation, and limitations, see the accompanying preprint.
 
 ## Status
 
-Research prototype. Preprint coming soon (April 2026).
-
-## Why CURIA
-
-- Works beyond sequence conservation using structure-aware embeddings  
-- Scales to genome-wide analysis via synteny constraints  
-- Handles long lncRNAs via localized "island" representation
-
----
+Research prototype. Preprint in preparation.
 
 ## Installation
 
@@ -144,24 +143,11 @@ See [OUTPUT_STRUCTURE.md](OUTPUT_STRUCTURE.md) for detailed file descriptions.
 
 ---
 
-## How It Works
-
-1. **Orthologous loci prediction** — candidate regions are identified using genome alignment chains and a TOGA-based classifier  
-2. **Short ncRNA refinement** — compact ncRNAs are localized using MMD-based matching in embedding space  
-3. **Island detection** — RNA-FM identifies structured regions ("islands") within lncRNAs  
-4. **Query scanning** — candidate query regions are scanned for islands  
-5. **Island alignment** — reference and query islands are matched using MMD over embedding distributions
-
-
----
-
 ## Validation
 
-CURIA has been evaluated on human–mouse, human–dog, and human–cow comparisons.  
-For short ncRNAs, the method recovers a substantial fraction of annotated loci with high boundary accuracy.  
-For lncRNAs, CURIA identifies conserved subregions ("islands"), with a subset reproducible across species.
+Evaluated on several mammalian genome pairs, including human–mouse.
 
-Full validation details are provided in the preprint (in preparation).
+For full evaluation details and limitations, see the preprint.
 
 ---
 
