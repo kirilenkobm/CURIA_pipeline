@@ -7,10 +7,10 @@ output_dir/
 ├── query_annotation/
 │   ├── short_ncRNA.bed              # Short ncRNA annotations (miRNA, tRNA, snoRNA, etc. ≤160bp)
 │   ├── short_ncRNA_details.tsv      # Detailed short ncRNA results with scores and metadata
-│   ├── lncRNA_islands.bed           # Aligned lncRNA functional islands in query genome
-│   ├── lncRNA_islands_reference.bed # Matching reference islands for aligned pairs
-│   ├── reference_islands.bed        # All reference islands (for QC/visualization)
-│   └── query_islands.bed            # All query islands before alignment (for QC)
+│   ├── aligned_query_islands.bed     # Aligned lncRNA functional islands in query genome
+│   ├── aligned_reference_islands.bed # Matching reference islands for aligned pairs
+│   ├── raw_reference_islands.bed    # All reference islands (for QC/visualization)
+│   └── raw_query_islands.bed        # All query islands before alignment (for QC)
 │
 ├── island_alignment_results.tsv     # Detailed island alignment results with MMD scores
 ├── preprocessed_reference_data.json # Reference islands data (reusable across queries)
@@ -39,8 +39,8 @@ output_dir/
 |------|-------------|----------|
 | `query_annotation/short_ncRNA.bed` | Short structured ncRNA annotations | Load in genome browser, functional analysis |
 | `query_annotation/short_ncRNA_details.tsv` | Detailed short ncRNA results with scores and metadata | Filter by quality, inspect individual predictions |
-| `query_annotation/lncRNA_islands.bed` | Conserved lncRNA functional islands in query | Identify conserved regulatory elements |
-| `query_annotation/lncRNA_islands_reference.bed` | Matching reference islands for aligned pairs | Compare ref vs query island pairs in browser |
+| `query_annotation/aligned_query_islands.bed` | Conserved lncRNA functional islands in query | Identify conserved regulatory elements |
+| `query_annotation/aligned_reference_islands.bed` | Matching reference islands for aligned pairs | Compare ref vs query island pairs in browser |
 | `island_alignment_results.tsv` | Alignment scores and coordinates | Filter by quality, downstream analysis |
 
 ### Reusable Data
@@ -59,8 +59,8 @@ output_dir/
 | `mappings/query_regions_clusters.json` | Merged query regions from island liftover | Inspect how islands were projected |
 | `toga_results/rna_orthologous_regions.tsv` | Orthology predictions | See which RNAs have orthologs |
 | `toga_results/original_toga_classification_table.tsv` | TOGA classification scores | Inspect raw TOGA output |
-| `query_annotation/reference_islands.bed` | All reference functional islands | Compare ref vs query in browser |
-| `query_annotation/query_islands.bed` | All detected query islands | QC: what was scanned before alignment |
+| `query_annotation/raw_reference_islands.bed` | All reference functional islands | Compare ref vs query in browser |
+| `query_annotation/raw_query_islands.bed` | All detected query islands | QC: what was scanned before alignment |
 
 ---
 
@@ -72,7 +72,7 @@ These are automatically removed during cleanup to save space:
 - `joblists/*.txt` — Internal task scheduling (no scientific value)
 - `intermediate_sqlite_dbs/*.sqlite` — Async processing cache (redundant)
 - `toga_results/reference_chrom_sizes.tsv` — Technical file
-- `mappings/query_islands.json` — Redundant with `query_islands.bed`
+- `mappings/query_islands.json` — Redundant with `raw_query_islands.bed`
 - `temp_shortrna_results.tsv` — Temporary processing artifact
 
 ---

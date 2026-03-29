@@ -64,6 +64,7 @@ Thumbs.db
 # BED files (except example/reference files in docs or examples directories)
 *.bed
 *.bed12
+!preprint_results/**/*.bed
 !examples/**/*.bed
 !examples/**/*.bed12
 !input_data/reference_annotation/test_sample.bed
@@ -140,4 +141,3 @@ draft/
 /validation/bulk_validation_overall.tsv
 /validation/bulk_validation_summary.tsv
 /cleanup_quick_test_results.sh
-/preprint_results/

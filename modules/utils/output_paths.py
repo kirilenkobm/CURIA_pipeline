@@ -60,19 +60,19 @@ class OutputPaths:
 
     @property
     def reference_islands_bed(self) -> Path:
-        return self.query_annotation_dir / "reference_islands.bed"
+        return self.query_annotation_dir / "raw_reference_islands.bed"
 
     @property
     def query_islands_bed(self) -> Path:
-        return self.query_annotation_dir / "query_islands.bed"
+        return self.query_annotation_dir / "raw_query_islands.bed"
 
     @property
     def aligned_islands_ref_bed(self) -> Path:
-        return self.query_annotation_dir / "lncRNA_islands_reference.bed"
+        return self.query_annotation_dir / "aligned_reference_islands.bed"
 
     @property
     def aligned_islands_query_bed(self) -> Path:
-        return self.query_annotation_dir / "lncRNA_islands.bed"
+        return self.query_annotation_dir / "aligned_query_islands.bed"
 
     # --- Temporary / internal paths ---
 

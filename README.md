@@ -119,10 +119,10 @@ output_dir/
 ├── query_annotation/
 │   ├── short_ncRNA.bed              # Short ncRNA annotations (≤160bp)
 │   ├── short_ncRNA_details.tsv      # Detailed short ncRNA results
-│   ├── lncRNA_islands.bed           # Aligned lncRNA islands in query
-│   ├── lncRNA_islands_reference.bed # Matching reference islands
-│   ├── reference_islands.bed        # All reference islands (QC)
-│   └── query_islands.bed            # All query islands (QC)
+│   ├── aligned_query_islands.bed     # Aligned lncRNA islands in query
+│   ├── aligned_reference_islands.bed # Matching reference islands
+│   ├── raw_reference_islands.bed    # All reference islands (QC)
+│   └── raw_query_islands.bed        # All query islands (QC)
 ├── island_alignment_results.tsv     # Island alignment scores
 ├── preprocessed_reference_data.json # Reusable reference data
 ├── reference_union_transcripts.bed  # Collapsed reference isoforms
