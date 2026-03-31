@@ -156,7 +156,7 @@ For full evaluation details and limitations, see the preprint.
 If you use CURIA, please cite:
 
 Kirilenko, B.M. (2026).  
-CURIA: Cross-species Unified ncRNA Inference and Annotation.  
+Cross-species ncRNA annotation using synteny-constrained embedding similarity.  
 bioRxiv (preprint).
 
 ---
