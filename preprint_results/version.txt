@@ -1,0 +1,16 @@
+CURIA preprint results snapshot
+
+Date: 2026-04-09
+Corresponds to: bioRxiv preprint submission
+
+Description:
+This directory contains all outputs used in the preprint:
+"Cross-species ncRNA annotation using synteny-constrained embedding similarity".
+
+Pipeline version:
+0.1 (preprint version)
+
+Notes:
+- Results are generated using fixed RNA-FM embeddings and PCA projection
+- Parameters correspond to those described in the Methods section
+- This snapshot is intended for reproducibility of reported results
