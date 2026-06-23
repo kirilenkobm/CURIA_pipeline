@@ -17,17 +17,23 @@ Research prototype. Preprint in preparation.
 
 ## Installation
 
-If you don't have [uv](https://docs.astral.sh/uv/) installed:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Then set up the project:
+The quickest path is the bundled installer, which sets up the environment (via
+[uv](https://docs.astral.sh/uv/)), handles the macOS OpenMP prerequisite, and downloads
+the default RiNALMo weights:
 
 ```bash
 git clone --recurse-submodules git@github.com:kirilenkobm/curia_pipeline.git
 cd curia_pipeline
+./install.sh                 # env + RiNALMo weights (~2.6 GB)
+# ./install.sh --with-rnafm  # also fetch RNA-FM weights (comparison only)
+# ./install.sh --no-weights  # environment only
+source .venv/bin/activate
+```
+
+Or do it manually:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv is missing
 uv sync
 source .venv/bin/activate
 ```
@@ -35,8 +41,41 @@ source .venv/bin/activate
 > **macOS note:** OpenMP is required for scikit-learn and other numerical libraries.
 > Install it once with: `brew install libomp`
 
-The RNA-FM model (~1.1GB) downloads automatically on first run, or use `./download_rnafm_model.py` to download manually.
-If you already have the weights elsewhere, run `python download_rnafm_model.py --show-dir` to see where to place them.
+**Model weights:**
+- **RiNALMo** `giga-v1` (~2.6 GB, default) downloads automatically on first run
+  (cached at `~/.cache/rinalmo_pretrained`).
+- **RNA-FM** (~1.1 GB, comparison only / deprecated) downloads automatically when
+  `--model rnafm` is used, or manually via `./download_rnafm_model.py`.
+
+## Model choice
+
+CURIA defaults to **RiNALMo** (1280-dim, 650M params). RNA-FM is retained behind
+`--model rnafm` for comparison only and is **deprecated**.
+
+Why RiNALMo is the default:
+- **Context stability.** RiNALMo embeddings are essentially invariant to flanking
+  sequence (≈0 MMD drift), whereas RNA-FM embeddings shift substantially when input
+  boundaries move. This is the root cause of RNA-FM's expensive per-window re-embedding.
+- **Embed-once-and-slice.** Because RiNALMo is context-stable, island alignment embeds
+  each island **once** and slices the per-token embeddings into windows locally, instead
+  of re-embedding every sliding window. This is dramatically faster with comparable (often
+  lower) MMD on true matches.
+
+Per-model parameters (PCA file, signal/noise classifier, window/stride, MMD thresholds,
+embedding strategy) live in [`modules/model_registry.py`](modules/model_registry.py) and
+are selected automatically by `--model`.
+
+```bash
+./curia.py ... --model rinalmo   # default
+./curia.py ... --model rnafm     # deprecated, comparison only
+```
+
+**Artifact provenance** (committed under `modules/`):
+- `global_PCA/rinalmo_pca_k16.npz` — global PCA fit on position-level RiNALMo embeddings
+  (`notebooks/rinalmo_pca_calibration.ipynb`).
+- `logreg_signal_noise/logreg_noise_model_rinalmo.json` — signal/noise classifier, built by
+  `modules/logreg_signal_noise/build_rinalmo_logreg.py` (recipe from
+  `notebooks/rinalmo_signal_noise.ipynb`).
 
 ---
 
@@ -81,7 +120,7 @@ python modules/GPU_executor/benchmark_batch_size.py
 
 **Compute:**
 - CPU required for RNA TOGA and sequence processing
-- GPU optional but recommended for RNA-FM embeddings
+- GPU optional but recommended for foundation-model embeddings
 - Tested on macOS (MPS) and Linux (CUDA)
 
 ---
@@ -164,4 +203,5 @@ bioRxiv (preprint).
 ## References
 
 - **TOGA:** Kirilenko et al., *Integrating gene annotation with orthology inference at scale*, Science (2023)
+- **RiNALMo:** Penić et al., *RiNALMo: General-Purpose RNA Language Models Can Generalize Well on Structure Prediction Tasks*, arXiv (2024)
 - **RNA-FM:** Chen et al., *Interpretable RNA foundation model from unannotated data for highly accurate RNA structure and function predictions*, arXiv (2022)

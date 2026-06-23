@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-GPU executor for batched RNA-FM inference with PCA projection.
+GPU executor for batched RNA foundation model inference with PCA projection.
+
+Supports any model registered in model_registry (RNA-FM, RiNALMo, etc.).
 
 Expected job format on input queue:
     (worker_id, sequence_id, sequence, flags)
@@ -26,12 +28,11 @@ from pathlib import Path
 import numpy as np
 import torch
 
-# Add RNA-FM module to path
 MODULES_DIR = Path(__file__).resolve().parents[1]
-RNAFM_DIR = MODULES_DIR / "RNA-FM"
-sys.path.insert(0, str(RNAFM_DIR))
+if str(MODULES_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(MODULES_DIR.parent))
 
-import fm  # noqa: E402
+from modules.model_registry import load_model, get_pca_path
 
 
 @dataclass
@@ -42,6 +43,7 @@ class ExecutorConfig:
     max_wait: float = 0.2
     device: str = "auto"
     enable_logging: bool = False
+    model_name: str = "rnafm"
 
 
 class PCAProjector:
@@ -51,7 +53,6 @@ class PCAProjector:
         self.components = torch.from_numpy(data["components"]).float().to(device)
 
     def project(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (N, 640)
         return (x - self.mean) @ self.components.T
 
 
@@ -95,8 +96,6 @@ def _collect_batch(input_queue, cfg: ExecutorConfig):
     jobs = [job]
     stop_after = False
 
-    # Drain: grab everything currently queued without waiting.
-    # Keeps GPU responsive instead of sleeping 200ms for a full batch.
     while len(jobs) < cfg.max_batch:
         try:
             job = input_queue.get_nowait()
@@ -118,27 +117,10 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
     if device.type == "cpu":
         print("# Warning: GPU executor running on CPU (CUDA/MPS unavailable).")
 
-    # Load RNA-FM model with corrupted file handling
-    try:
-        model, alphabet = fm.pretrained.rna_fm_t12()
-    except RuntimeError as e:
-        if "failed finding central directory" in str(e) or "PytorchStreamReader failed" in str(e):
-            # Corrupted model file - remove and retry
-            import os
-            cached_file = Path(torch.hub.get_dir()) / "checkpoints" / "RNA-FM_pretrained.pth"
-            if cached_file.exists():
-                print(f"# Corrupted RNA-FM model detected at {cached_file}")
-                print(f"# Removing and re-downloading...")
-                os.remove(cached_file)
-                model, alphabet = fm.pretrained.rna_fm_t12()
-            else:
-                raise
-        else:
-            raise
-
-    batch_converter = alphabet.get_batch_converter()
-    model.eval()
-    model.to(device)
+    # Load model via registry
+    model_name = cfg.model_name
+    print(f"# GPU executor: loading {model_name}...")
+    model, tokenize_fn, extract_fn = load_model(model_name, device)
 
     use_amp = device.type == "cuda"
     if use_amp:
@@ -151,18 +133,19 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
         except Exception as e:
             print(f"# GPU executor: torch.compile unavailable ({e})")
 
-    pca_path = MODULES_DIR / "global_PCA" / "rnafm_pca_k16.npz"
+    pca_path = get_pca_path(model_name)
     pca = PCAProjector(pca_path, device)
+    print(f"# GPU executor: {model_name} ready (PCA: {pca_path.name})")
 
     # Monitoring stats
     batch_sizes = []
     gpu_compute_times = []
     ipc_times = []
     last_log_time = time.time()
-    log_interval = 3.0  # Log every 3 seconds
+    log_interval = 3.0
 
     while True:
-        ipc_start = time.time()  # Start timing IPC (batch collection)
+        ipc_start = time.time()
         jobs, stop_after = _collect_batch(input_queue, cfg)
         if not jobs and stop_after:
             break
@@ -183,19 +166,14 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
             sequences.append(_normalize_sequence(sequence))
             mean_flags.append(_parse_mean_pool(flags))
 
-        data = [(f"seq_{i}", seq) for i, seq in enumerate(sequences)]
-        _, _, batch_tokens = batch_converter(data)
-        batch_tokens = batch_tokens.to(device)
+        tokens = tokenize_fn(sequences)
 
-        # GPU compute timing
         gpu_start = time.time()
         with torch.no_grad(), torch.autocast(
             device_type="cuda", dtype=torch.float16, enabled=use_amp
         ):
-            results = model(batch_tokens, repr_layers=[12])
+            reps = extract_fn(model, tokens)
         gpu_compute_time = time.time() - gpu_start
-
-        reps = results["representations"][12].float()
 
         token_embeds = []
         for i, seq in enumerate(sequences):
@@ -209,7 +187,6 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
         if no_mean_indices:
             concat_tokens = torch.cat([token_embeds[i] for i in no_mean_indices], dim=0)
             pca_concat = pca.project(concat_tokens)
-            # One-shot GPU->CPU transfer
             pca_concat_cpu = pca_concat.detach().cpu()
             sizes = [token_embeds[i].shape[0] for i in no_mean_indices]
             splits = torch.split(pca_concat_cpu, sizes, dim=0)
@@ -220,12 +197,10 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
         if mean_indices:
             mean_vecs = torch.stack([token_embeds[i].mean(dim=0) for i in mean_indices], dim=0)
             pca_means = pca.project(mean_vecs)
-            # One-shot GPU->CPU transfer
             pca_means_cpu = pca_means.detach().cpu()
             for idx, vec in zip(mean_indices, pca_means_cpu):
                 pca_mean_vecs[idx] = vec
 
-        # Batched output distribution - single queue put with all results
         output_start = time.time()
         payload = []
         for i in range(len(jobs)):
@@ -237,20 +212,17 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
         output_queue.put(payload)
         output_time = time.time() - output_start
 
-        # Record stats
         batch_sizes.append(len(jobs))
         gpu_compute_times.append(gpu_compute_time)
         total_ipc_time = batch_collection_time + output_time
         ipc_times.append(total_ipc_time)
 
-        # Log statistics every N seconds
         current_time = time.time()
         if cfg.enable_logging and current_time - last_log_time >= log_interval:
             try:
                 in_queue_size = input_queue.qsize()
                 out_queue_size = output_queue.qsize()
             except NotImplementedError:
-                # Some queue implementations don't support qsize()
                 in_queue_size = -1
                 out_queue_size = -1
 
@@ -261,7 +233,6 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
                 total_time = avg_gpu_time + avg_ipc_time
                 gpu_utilization = (avg_gpu_time / total_time * 100) if total_time > 0 else 0
 
-                # Calculate throughput
                 total_samples = sum(batch_sizes)
                 elapsed = current_time - (last_log_time if last_log_time > 0 else current_time)
                 throughput = total_samples / elapsed if elapsed > 0 else 0
@@ -274,7 +245,6 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
                     f"throughput={throughput:.0f}/s"
                 )
 
-                # Reset stats for next interval
                 batch_sizes = []
                 gpu_compute_times = []
                 ipc_times = []

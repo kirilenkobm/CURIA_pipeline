@@ -1,0 +1,133 @@
+diff --git a/rinalmo/model/attention.py b/rinalmo/model/attention.py
+index 51d91e7..6a0e31c 100644
+--- a/rinalmo/model/attention.py
++++ b/rinalmo/model/attention.py
+@@ -17,7 +17,24 @@ try:
+ except ImportError:
+     FLASH_ATTN_AVAILABLE = False
+ 
+-def dot_product_attention(q, k, v, attn_mask=None, key_pad_mask=None, dropout=None):
++def dot_product_attention(q, k, v, attn_mask=None, key_pad_mask=None, dropout=None,
++                          need_attn_weights=False):
++    if not need_attn_weights and hasattr(F, "scaled_dot_product_attention"):
++        sdpa_mask = None
++        if key_pad_mask is not None:
++            sdpa_mask = ~key_pad_mask.unsqueeze(1).unsqueeze(2)
++            sdpa_mask = sdpa_mask.expand(-1, q.shape[1], q.shape[2], -1)
++        if attn_mask is not None:
++            am = ~attn_mask
++            sdpa_mask = am if sdpa_mask is None else sdpa_mask & am
++        drop_p = dropout.p if dropout is not None and dropout.training else 0.0
++        output = F.scaled_dot_product_attention(
++            q, k, v,
++            attn_mask=sdpa_mask.to(q.dtype) if sdpa_mask is not None and sdpa_mask.dtype == torch.bool else sdpa_mask,
++            dropout_p=drop_p,
++        )
++        return output, None
++
+     c = q.shape[-1]
+     attn = torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(c)
+ 
+@@ -57,7 +74,7 @@ class MultiHeadAttention(nn.Module):
+ 
+         self.out_proj = nn.Linear(c_in, c_in, bias=bias)
+ 
+-    def forward(self, q, k, v, attn_mask=None, key_pad_mask=None):
++    def forward(self, q, k, v, attn_mask=None, key_pad_mask=None, need_attn_weights=False):
+         bs = q.shape[0]
+ 
+         q = self.to_q(q).view(bs, -1, self.num_heads, self.c_head).transpose(-2, -3)
+@@ -67,7 +84,9 @@ class MultiHeadAttention(nn.Module):
+         if self.use_rot_emb:
+             q, k = self.rotary_emb(q, k)
+ 
+-        output, attn = dot_product_attention(q, k, v, attn_mask, key_pad_mask, self.attention_dropout)
++        output, attn = dot_product_attention(q, k, v, attn_mask, key_pad_mask,
++                                             self.attention_dropout,
++                                             need_attn_weights=need_attn_weights)
+ 
+         output = output.transpose(-2, -3).contiguous().view(bs, -1, self.num_heads * self.c_head)
+         output = self.out_proj(output)
+@@ -80,8 +99,9 @@ class MultiHeadSelfAttention(nn.Module):
+ 
+         self.mh_attn = MultiHeadAttention(c_in, num_heads, attention_dropout, use_rot_emb, bias)
+ 
+-    def forward(self, x, attn_mask=None, key_pad_mask=None):
+-        return self.mh_attn(x, x, x, attn_mask, key_pad_mask)
++    def forward(self, x, attn_mask=None, key_pad_mask=None, need_attn_weights=False):
++        return self.mh_attn(x, x, x, attn_mask, key_pad_mask,
++                            need_attn_weights=need_attn_weights)
+ 
+ 
+ # --- Flash attention classes (CUDA-only, require flash_attn + einops) ---
+diff --git a/rinalmo/model/model.py b/rinalmo/model/model.py
+index 6cf02ad..c03e976 100644
+--- a/rinalmo/model/model.py
++++ b/rinalmo/model/model.py
+@@ -17,7 +17,7 @@ class RiNALMo(nn.Module):
+ 
+         self.token_dropout = TokenDropout(**self.config.model['token_dropout'])
+ 
+-    def forward(self, tokens, need_attn_weights=False):
++    def forward(self, tokens, need_attn_weights=False, need_logits=True):
+         pad_mask = tokens.eq(self.pad_tkn_idx)
+         x = self.embedding(tokens)
+         x = self.token_dropout(x, tokens)
+@@ -30,9 +30,10 @@ class RiNALMo(nn.Module):
+                 )
+         else:
+             representation, attn_weights = self.transformer(x, key_padding_mask=pad_mask, need_attn_weights=need_attn_weights)
+-        x = self.lm_mask_head(representation)
+ 
+-        result = {"logits": x, "representation": representation}
++        result = {"representation": representation}
++        if need_logits:
++            result["logits"] = self.lm_mask_head(representation)
+         if need_attn_weights:
+             result["attentions"] = torch.stack(attn_weights, dim=1)
+ 
+diff --git a/rinalmo/model/modules.py b/rinalmo/model/modules.py
+index 5b358a6..bc79d89 100644
+--- a/rinalmo/model/modules.py
++++ b/rinalmo/model/modules.py
+@@ -56,14 +56,23 @@ class Transformer(nn.Module):
+         if need_attn_weights:
+             attn_weights = []
+ 
++        use_ckpt = self.training
++
+         for block in self.blocks:
+-            x, attn = checkpoint.checkpoint(
+-                block,
+-                x,
+-                key_padding_mask=key_padding_mask,
+-                need_attn_weights=need_attn_weights,
+-                use_reentrant=False,
+-            )
++            if use_ckpt:
++                x, attn = checkpoint.checkpoint(
++                    block,
++                    x,
++                    key_padding_mask=key_padding_mask,
++                    need_attn_weights=need_attn_weights,
++                    use_reentrant=False,
++                )
++            else:
++                x, attn = block(
++                    x,
++                    key_padding_mask=key_padding_mask,
++                    need_attn_weights=need_attn_weights,
++                )
+ 
+             if need_attn_weights:
+                 attn_weights.append(attn)
+@@ -134,7 +143,8 @@ class TransformerBlock(nn.Module):
+         if self.use_flash_attn:
+             mh_out, attn = self.mh_attn(x, key_padding_mask=key_padding_mask, return_attn_probs=need_attn_weights)
+         else:
+-            mh_out, attn = self.mh_attn(x, attn_mask=None, key_pad_mask=key_padding_mask)
++            mh_out, attn = self.mh_attn(x, attn_mask=None, key_pad_mask=key_padding_mask,
++                                        need_attn_weights=bool(need_attn_weights))
+         x = x + self.residual_dropout_1(mh_out)
+ 
+         residual = x

@@ -93,6 +93,36 @@ class IslandAlignmentConfig:
     min_match_eff_nt: int = 40       # minimum aligned nucleotides to keep
     max_queries_per_ref: int = 2     # max query islands one ref island can claim
 
+    # -- embedding strategy ----------------------------------------------------
+    # "windowed"   : re-embed every sliding window in its own context (RNA-FM,
+    #                which drifts under flanking context).
+    # "embed_once" : embed the whole island once and slice the per-token
+    #                embeddings into windows locally (RiNALMo, context-stable).
+    embed_strategy: str = "windowed"
+
+    @classmethod
+    def for_model(cls, model_name: Optional[str]) -> "IslandAlignmentConfig":
+        """Build a config with per-model tuned params from the model registry.
+
+        Falls back to the RNA-FM-tuned defaults if the registry has no entry.
+        """
+        try:
+            from modules.model_registry import (
+                get_island_align_params, get_embed_strategy,
+            )
+        except Exception:
+            return cls()
+        p = get_island_align_params(model_name)
+        return cls(
+            window_size=p.get("window_size", cls.window_size),
+            stride=p.get("stride", cls.stride),
+            min_island_len=p.get("min_island_len", cls.min_island_len),
+            mean_dist_threshold=p.get("mean_dist_threshold", cls.mean_dist_threshold),
+            sw_tau=p.get("sw_tau", cls.sw_tau),
+            max_match_mmd=p.get("max_match_mmd", cls.max_match_mmd),
+            embed_strategy=get_embed_strategy(model_name),
+        )
+
 
 DEFAULT_CONFIG = IslandAlignmentConfig()
 
@@ -269,19 +299,37 @@ async def _embed_island_windows(
     island_id: str,
     config: IslandAlignmentConfig = DEFAULT_CONFIG,
 ) -> List[np.ndarray]:
-    """Slide windows over sequence, embed each via GPU executor (per-token PCA).
+    """Produce per-window per-token PCA embeddings for one island.
 
-    Returns list of (L, 16) arrays — one per window — suitable for
-    character-level MMD computation (NOT mean-pooled).
+    Returns a list of (window_size, k) arrays — one per sliding window —
+    suitable for character-level MMD computation (NOT mean-pooled).
+
+    Two strategies (selected by ``config.embed_strategy``):
+
+    * ``"windowed"`` (RNA-FM): each window is re-embedded in its own short
+      context, because RNA-FM embeddings drift when flanking context changes.
+      One GPU call per window.
+
+    * ``"embed_once"`` (RiNALMo): the whole island is embedded ONCE and the
+      resulting per-token embedding is sliced into windows locally. Valid
+      because RiNALMo is context-stable (see context_dependency.ipynb), and
+      avoids N redundant GPU calls (≈100× fewer embeddings for dense strides).
     """
     seq_len = len(seq)
     if seq_len < config.window_size:
         emb = await gpu.embed(job_id, f"{island_id}:full", seq, mean_pool=False)
         return [emb]
 
-    windows = [seq[s:s + config.window_size]
-               for s in range(0, seq_len - config.window_size + 1, config.stride)]
+    starts = list(range(0, seq_len - config.window_size + 1, config.stride))
 
+    if config.embed_strategy == "embed_once":
+        # One embedding for the whole island, then slice locally.
+        full = await gpu.embed(job_id, f"{island_id}:full", seq, mean_pool=False)
+        # full: (seq_len, k). Slice each window's token rows.
+        return [np.ascontiguousarray(full[s:s + config.window_size]) for s in starts]
+
+    # windowed: one GPU call per window (RNA-FM default)
+    windows = [seq[s:s + config.window_size] for s in starts]
     tasks = [gpu.embed(job_id, f"{island_id}:w{i}", w, mean_pool=False)
              for i, w in enumerate(windows)]
     results = await asyncio.gather(*tasks)
@@ -953,6 +1001,7 @@ def run_island_alignment_scheduler(
     test_cap_jobs: Optional[int] = None,
     config: Optional[IslandAlignmentConfig] = None,
     clusters_json_path: str = None,
+    model_name: Optional[str] = None,
 ) -> None:
     """
     Run island alignment scheduler with GPU executor integration.
@@ -966,7 +1015,11 @@ def run_island_alignment_scheduler(
     islands found in the regions it was projected into.
     """
     if config is None:
-        config = DEFAULT_CONFIG
+        config = IslandAlignmentConfig.for_model(model_name)
+    print(f"# Island alignment: model={model_name or 'default'}, "
+          f"strategy={config.embed_strategy}, "
+          f"window={config.window_size}, stride={config.stride}, "
+          f"sw_tau={config.sw_tau}, mean_dist_thr={config.mean_dist_threshold}")
 
     # Pin numpy/BLAS to single-threaded: we handle parallelism ourselves via
     # the thread pool, so internal threading would cause oversubscription.

@@ -30,6 +30,7 @@ UTILS_DIR = MODULES_DIR / "utils"
 from pyrion import read_chain_file
 
 from modules.GPU_executor.gpu_executor import ExecutorConfig, run_gpu_executor
+from modules.model_registry import get_logreg_path, get_island_scan_params
 from modules.utils.chrom_sizes import write_chrom_sizes_from_2bit
 from modules.utils.output_paths import OutputPaths
 from modules.converters.union_transcript import collapse_to_union_transcripts
@@ -75,11 +76,25 @@ def parse_args():
         action="store_true",
         help="Skip automatic cleanup and reorganization of outputs (keep all intermediate files)",
     )
+    parser.add_argument(
+        "--model",
+        default="rinalmo",
+        choices=["rnafm", "rinalmo"],
+        help="RNA foundation model for embeddings (default: rinalmo). "
+             "'rnafm' is DEPRECATED and kept only for comparison.",
+    )
 
     if len(sys.argv) < 2:
         parser.print_help()
         sys.exit(0)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.model == "rnafm":
+        print(
+            "# WARNING: --model rnafm is DEPRECATED (kept for comparison only). "
+            "RiNALMo is the default and recommended model.",
+            file=sys.stderr,
+        )
+    return args
 
 
 def start_gpu_executor(args):
@@ -90,6 +105,7 @@ def start_gpu_executor(args):
         max_batch=args.gpu_max_batch,
         min_batch=args.gpu_min_batch,
         enable_logging=args.gpu_logger,
+        model_name=args.model,
     )
     proc = ctx.Process(target=run_gpu_executor, args=(input_q, output_q, cfg), name="gpu_executor")
     proc.daemon = True
@@ -218,7 +234,8 @@ def run_reference_islands_step(
         paths.intermediate_sqlite_dir.mkdir(parents=True, exist_ok=True)
         ref_islands_json.parent.mkdir(parents=True, exist_ok=True)
 
-        logreg_model_path = MODULES_DIR / "logreg_signal_noise" / "logreg_noise_model.json"
+        logreg_model_path = get_logreg_path(args.model)
+        scan = get_island_scan_params(args.model)
         run_reference_islands_scanner(
             str(ref_islands_joblist),
             str(args.ref_2bit),
@@ -228,6 +245,9 @@ def run_reference_islands_step(
             str(logreg_model_path),
             str(ref_islands_json),
             max_concurrent=args.cpu_max_workers,
+            window_size=scan["window_size"],
+            stride=scan["stride"],
+            prob_threshold=scan["prob_threshold"],
         )
 
     return ref_islands_json
@@ -415,14 +435,18 @@ def main():
 
         if not skip_query_islands:
             print("# Running query islands scanner...")
+            scan = get_island_scan_params(args.model)
             run_query_islands_scanner(
                 str(paths.query_islands_joblist),
                 str(args.query_2bit),
                 input_q,
                 output_q,
                 str(paths.query_islands_sqlite),
-                str(MODULES_DIR / "logreg_signal_noise" / "logreg_noise_model.json"),
+                str(get_logreg_path(args.model)),
                 max_concurrent=args.cpu_max_workers,
+                window_size=scan["window_size"],
+                stride=scan["stride"],
+                prob_threshold=scan["prob_threshold"],
                 output_json_path=str(paths.query_islands_json),
             )
 
@@ -474,6 +498,7 @@ def main():
                 str(paths.island_alignment_results),
                 max_concurrent=args.cpu_max_workers,
                 clusters_json_path=str(paths.query_regions_clusters),
+                model_name=args.model,
             )
 
         print(f"# Pipeline completed! Island alignment results: {paths.island_alignment_results}")
