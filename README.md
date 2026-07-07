@@ -76,7 +76,7 @@ are selected automatically by `--model`.
 - `logreg_signal_noise/logreg_noise_model_rinalmo.json` — signal/noise (island-finding)
   classifier. The PCA and classifier are built together by
   `logreg_signal_noise/build_rinalmo_finding.py` (`--from-cache` re-fits from the cached
-  features); sweep in `notebooks/island_scan_param_sweep.ipynb`.
+  features); sweep in `notebooks/finding_benchmark.ipynb`.
 
 ---
 

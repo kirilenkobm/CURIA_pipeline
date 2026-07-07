@@ -46,9 +46,9 @@ MODELS = {
     "rinalmo": {
         "module_path": "RiNALMo",
         # MATCHING PCA. k=16 gives the best MMD discrimination for the island
-        # *matching* step (see rinalmo_signal_noise.ipynb / rinalmo_pca_calibration.ipynb).
+        # *matching* step (see calibration_provenance.ipynb).
         # It is tuned for matching, NOT finding: a deployment-faithful scan
-        # benchmark (notebooks/island_scan_param_sweep.ipynb) showed k=16 is the
+        # benchmark (notebooks/finding_benchmark.ipynb) showed k=16 is the
         # bottleneck for the *finding* scanner (~0.06 detection at 10% background-FP).
         # Finding uses a separate, higher-dimensional projection (finding_pca_file).
         "pca_file": "rinalmo_pca_k16.npz",
@@ -66,11 +66,11 @@ MODELS = {
         # and the per-token embeddings sliced into windows locally. NOTE: this
         # governs the *matching* path only; the finding scanner already embeds
         # each window in isolation (embed-once slicing hurts finding — it leaks
-        # flank context into the window mean-pool, see island_scan_param_sweep.ipynb).
+        # flank context into the window mean-pool, see finding_benchmark.ipynb).
         "embed_strategy": "embed_once",
         # FINDING scan params. W=128 / stride~W/3 with overlap-labeled training
         # ("window positive if it covers >=20nt of a structured element") maximise
-        # recall (see notebooks/island_scan_param_sweep.ipynb). The finding
+        # recall (see notebooks/finding_benchmark.ipynb). The finding
         # classifier (logreg_noise_model_rinalmo.json, feature_dim=64, lncRNA
         # excluded) MUST be trained at this same window_size. prob_threshold
         # calibrated by build_rinalmo_finding.py on held-out loci: 0.5 -> detection

@@ -6,7 +6,7 @@ This is the deployed signal/noise scanner classifier. It is DISTINCT from the
 matching path: it uses a finding-specific PCA-64 (not the shared k=16 matching
 PCA), a larger window with overlap-labeling, and isolated-window embedding.
 
-Recipe (from notebooks/island_scan_param_sweep.ipynb, the deployment-faithful
+Recipe (from notebooks/finding_benchmark.ipynb, the deployment-faithful
 scan benchmark):
   - positives = tiled windows across single-exon structured ncRNA gene bodies in
     genomic context (+/-150 nt flank), a window is POSITIVE if it overlaps the
@@ -467,7 +467,7 @@ def main():
     # --- write deployed finding classifier --------------------------------
     provenance = {
         "builder": "modules/logreg_signal_noise/build_rinalmo_finding.py",
-        "notebook": "notebooks/island_scan_param_sweep.ipynb",
+        "notebook": "notebooks/finding_benchmark.ipynb",
         "date": date.today().isoformat(),
         "signal": "structured ncRNA (tRNA/miRNA/snoRNA/snRNA/misc_RNA/scaRNA), lncRNA EXCLUDED",
         "labeling": f"overlap: window positive if it covers >={OVERLAP_NT}nt of gene body",
