@@ -43,7 +43,7 @@ source .venv/bin/activate
 
 **Model weights:**
 - **RiNALMo** `giga-v1` (~2.6 GB, default) downloads automatically on first run
-  (cached at `~/.cache/rinalmo_pretrained`).
+  (cached at `~/.cache/rinalmo_pretrained`), or manually via `./download_rinalmo_model.py`.
 - **RNA-FM** (~1.1 GB, comparison only / deprecated) downloads automatically when
   `--model rnafm` is used, or manually via `./download_rnafm_model.py`.
 
@@ -61,7 +61,7 @@ Why RiNALMo is the default:
   cosine dotplot — no per-window re-embedding. Dramatically faster and more accurate on true
   matches (see `notebooks/matching_benchmark.ipynb`).
 
-Per-model parameters (PCA file, signal/noise classifier, window/stride, MMD thresholds,
+Per-model parameters (PCA files, signal/noise classifier, scan/match thresholds,
 embedding strategy) live in [`modules/model_registry.py`](modules/model_registry.py) and
 are selected automatically by `--model`.
 

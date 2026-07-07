@@ -47,13 +47,7 @@ uv sync
 # --- model weights --------------------------------------------------------
 if [[ "$DOWNLOAD_WEIGHTS" == "1" ]]; then
   echo "# Downloading RiNALMo giga-v1 weights (~2.6 GB, cached at ~/.cache/rinalmo_pretrained)"
-  uv run python -c "
-import sys
-sys.path.insert(0, 'modules/RiNALMo')
-from rinalmo.pretrained import get_pretrained_model
-get_pretrained_model(model_name='giga-v1')
-print('# RiNALMo weights ready.')
-"
+  uv run python download_rinalmo_model.py
   if [[ "$WITH_RNAFM" == "1" ]]; then
     echo "# Downloading RNA-FM weights (~1.1 GB, comparison only)"
     uv run python download_rnafm_model.py || echo "# WARNING: RNA-FM download failed."

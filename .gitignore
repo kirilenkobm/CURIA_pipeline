@@ -44,6 +44,7 @@ conda_env/
 *~
 .junie
 .cache
+.claude
 
 # OS
 .DS_Store
