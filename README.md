@@ -56,10 +56,10 @@ Why RiNALMo is the default:
 - **Context stability.** RiNALMo embeddings are essentially invariant to flanking
   sequence (≈0 MMD drift), whereas RNA-FM embeddings shift substantially when input
   boundaries move. This is the root cause of RNA-FM's expensive per-window re-embedding.
-- **Embed-once-and-slice.** Because RiNALMo is context-stable, island alignment embeds
-  each island **once** and slices the per-token embeddings into windows locally, instead
-  of re-embedding every sliding window. This is dramatically faster with comparable (often
-  lower) MMD on true matches.
+- **Embed once, align at nucleotide resolution.** Because RiNALMo is context-stable, island
+  alignment embeds each island **once** and matches them by Smith-Waterman on the per-token
+  cosine dotplot — no per-window re-embedding. Dramatically faster and more accurate on true
+  matches (see `notebooks/matching_benchmark.ipynb`).
 
 Per-model parameters (PCA file, signal/noise classifier, window/stride, MMD thresholds,
 embedding strategy) live in [`modules/model_registry.py`](modules/model_registry.py) and
@@ -71,11 +71,12 @@ are selected automatically by `--model`.
 ```
 
 **Artifact provenance** (committed under `modules/`):
-- `global_PCA/rinalmo_pca_k16.npz` — global PCA fit on position-level RiNALMo embeddings
-  (`notebooks/rinalmo_pca_calibration.ipynb`).
-- `logreg_signal_noise/logreg_noise_model_rinalmo.json` — signal/noise classifier, built by
-  `modules/logreg_signal_noise/build_rinalmo_logreg.py` (recipe from
-  `notebooks/rinalmo_signal_noise.ipynb`).
+- `global_PCA/rinalmo_pca_k16.npz` — matching PCA (position-level embeddings).
+- `global_PCA/rinalmo_pca_find_k64.npz` — island-finding PCA.
+- `logreg_signal_noise/logreg_noise_model_rinalmo.json` — signal/noise (island-finding)
+  classifier. The PCA and classifier are built together by
+  `logreg_signal_noise/build_rinalmo_finding.py` (`--from-cache` re-fits from the cached
+  features); sweep in `notebooks/island_scan_param_sweep.ipynb`.
 
 ---
 

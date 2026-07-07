@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Benchmark a reasonable batch size for RNA-FM at a fixed sequence length."""
+"""Benchmark a reasonable batch size for the RNA foundation model at a fixed
+sequence length. Defaults to RiNALMo; pass --model rnafm for the deprecated
+RNA-FM comparison path."""
 
 import argparse
 import os
@@ -13,12 +15,11 @@ import torch
 # Fix macOS OpenMP conflict
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
-# Add RNA-FM module to $PATH
-MODULES_DIR = Path(__file__).resolve().parents[1]
-RNAFM_DIR = MODULES_DIR / "RNA-FM"
-sys.path.insert(0, str(RNAFM_DIR))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-import fm  # noqa: E402
+from modules.model_registry import load_model  # noqa: E402
 
 
 def get_device(preferred: str = "auto") -> torch.device:
@@ -56,18 +57,16 @@ def _mps_memory() -> tuple[int, int]:
     return current, driver
 
 
-def run_once(model, batch_converter, device: torch.device, batch_size: int, seq_len: int) -> float:
-    data = [(f"seq_{i}", random_seq(seq_len)) for i in range(batch_size)]
-    _, _, batch_tokens = batch_converter(data)
-    batch_tokens = batch_tokens.to(device)
+def run_once(model, tokenize_fn, extract_fn, device: torch.device, batch_size: int, seq_len: int) -> float:
+    seqs = [random_seq(seq_len) for _ in range(batch_size)]
+    tokens = tokenize_fn(seqs)  # returns tokens already on device
 
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats()
 
     start = time.perf_counter()
     with torch.no_grad():
-        out = model(batch_tokens, repr_layers=[12])
-        rep = out["representations"][12]
+        rep = extract_fn(model, tokens)
         _ = rep.sum().item()
     if device.type == "cuda":
         torch.cuda.synchronize()
@@ -75,13 +74,14 @@ def run_once(model, batch_converter, device: torch.device, batch_size: int, seq_
         torch.mps.synchronize()
     elapsed = time.perf_counter() - start
 
-    del batch_tokens
+    del tokens
     return elapsed
 
 
 def try_batch(
     model,
-    batch_converter,
+    tokenize_fn,
+    extract_fn,
     device: torch.device,
     batch_size: int,
     seq_len: int,
@@ -89,8 +89,8 @@ def try_batch(
 ) -> tuple[bool, float, int, int, int]:
     try:
         for _ in range(warmup):
-            run_once(model, batch_converter, device, batch_size, seq_len)
-        elapsed = run_once(model, batch_converter, device, batch_size, seq_len)
+            run_once(model, tokenize_fn, extract_fn, device, batch_size, seq_len)
+        elapsed = run_once(model, tokenize_fn, extract_fn, device, batch_size, seq_len)
         peak = 0
         mps_current = 0
         mps_driver = 0
@@ -117,7 +117,10 @@ def format_bytes(num: int) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Benchmark batch size for RNA-FM at fixed sequence length.")
+    parser = argparse.ArgumentParser(
+        description="Benchmark batch size for the RNA foundation model at a fixed sequence length.")
+    parser.add_argument("--model", default="rinalmo", choices=["rinalmo", "rnafm"],
+                        help="RNA foundation model (default: rinalmo; 'rnafm' is deprecated).")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "mps", "cuda"])
     parser.add_argument("--seq-len", type=int, default=160)
     parser.add_argument("--min-batch", type=int, default=64)
@@ -129,12 +132,9 @@ def main():
     args = parser.parse_args()
 
     device = get_device(args.device)
-    print(f"Using device: {device}")
+    print(f"Using device: {device} | model: {args.model}")
 
-    model, alphabet = fm.pretrained.rna_fm_t12()
-    batch_converter = alphabet.get_batch_converter()
-    model.eval()
-    model.to(device)
+    model, tokenize_fn, extract_fn = load_model(args.model, device)
 
     batches = list(range(args.min_batch, args.max_batch + 1, args.step))
     results = []
@@ -142,7 +142,7 @@ def main():
     for b in batches:
         print(f"\nTesting batch size {b}...")
         ok, elapsed, peak, mps_current, mps_driver = try_batch(
-            model, batch_converter, device, b, args.seq_len, args.warmup
+            model, tokenize_fn, extract_fn, device, b, args.seq_len, args.warmup
         )
         if not ok:
             print(f"Batch {b}: OOM or device error")
