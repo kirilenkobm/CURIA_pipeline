@@ -45,32 +45,55 @@ MODELS = {
     },
     "rinalmo": {
         "module_path": "RiNALMo",
-        # k=16 gives the best signal/noise AUC (0.9733) and best MMD
-        # discrimination of all k tried (see rinalmo_signal_noise.ipynb /
-        # rinalmo_pca_calibration.ipynb); higher k adds variance but dilutes
-        # the discriminative signal.
+        # MATCHING PCA. k=16 gives the best MMD discrimination for the island
+        # *matching* step (see rinalmo_signal_noise.ipynb / rinalmo_pca_calibration.ipynb).
+        # It is tuned for matching, NOT finding: a deployment-faithful scan
+        # benchmark (notebooks/island_scan_param_sweep.ipynb) showed k=16 is the
+        # bottleneck for the *finding* scanner (~0.06 detection at 10% background-FP).
+        # Finding uses a separate, higher-dimensional projection (finding_pca_file).
         "pca_file": "rinalmo_pca_k16.npz",
+        # FINDING PCA. Separate k=64 projection fit on mean-pooled window
+        # embeddings for the signal/noise scanner (~0.71 detection at 10%
+        # background-FP, ~12x over k=16). Applied by the GPU executor on the
+        # mean_pool/finding path only; matching keeps pca_file (k=16).
+        # Built by modules/logreg_signal_noise/build_rinalmo_finding.py.
+        "finding_pca_file": "rinalmo_pca_find_k64.npz",
         "logreg_file": "logreg_noise_model_rinalmo.json",
         "emb_dim": 1280,
         "pca_components": 16,
         # RiNALMo is context-stable (~0 MMD drift under flanking context, see
-        # context_dependency.ipynb), so an island can be embedded ONCE and the
-        # per-token embeddings sliced into windows locally — no re-embedding.
+        # context_dependency.ipynb), so a matching island can be embedded ONCE
+        # and the per-token embeddings sliced into windows locally. NOTE: this
+        # governs the *matching* path only; the finding scanner already embeds
+        # each window in isolation (embed-once slicing hurts finding — it leaks
+        # flank context into the window mean-pool, see island_scan_param_sweep.ipynb).
         "embed_strategy": "embed_once",
-        # Larger stride than RNA-FM: context stability removes the need for
-        # dense overlap during finding.
-        "island_scan": {"window_size": 72, "stride": 32, "prob_threshold": 0.25},
-        # Tuned for RiNALMo 16-dim PCA space. mean_dist_threshold is larger
-        # because RiNALMo PCA space has a wider scale (see calibration notebook).
-        # NOTE: window/stride/thresholds for the wide-window regime are seeded
-        # from notebook calibration and may be refined by a dedicated sweep.
+        # FINDING scan params. W=128 / stride~W/3 with overlap-labeled training
+        # ("window positive if it covers >=20nt of a structured element") maximise
+        # recall (see notebooks/island_scan_param_sweep.ipynb). The finding
+        # classifier (logreg_noise_model_rinalmo.json, feature_dim=64, lncRNA
+        # excluded) MUST be trained at this same window_size. prob_threshold
+        # calibrated by build_rinalmo_finding.py on held-out loci: 0.5 -> detection
+        # 0.76 (>=50% gene coverage) at 17% background-FP (recall-first, <=20%
+        # budget); use 0.575 for a <=10% budget (detection 0.63). See the logreg
+        # JSON provenance.calibration.
+        "island_scan": {"window_size": 128, "stride": 40, "prob_threshold": 0.5},
+        # Island MATCHING via the RiNALMo dotplot matcher (matchers/rinalmo.py):
+        # embed each island once -> per-token cosine dotplot (deployed k16
+        # matching PCA) -> nucleotide-resolution Smith-Waterman. Beats window-MMD
+        # on accuracy and cost in the flank-diluted regime (see
+        # notebooks/matching_benchmark.ipynb: AUC 0.993 vs 0.651, 100% core
+        # localization, ~0.9 ms/pair). tau_cos/gap are benchmark-validated.
+        # Quality = 1/(1+SW_score) (lower=better; the score integrates similarity
+        # over band length and is the discriminator). max_match_dist=0.1
+        # (i.e. SW score >= ~9) calibrated on Rfam same/cross-family pairs:
+        # with min_match_eff_nt=40 it gives TPR 0.98 / FPR 0.01.
         "island_align": {
-            "window_size": 96,
-            "stride": 16,
-            "sw_tau": 0.11,
-            "mean_dist_threshold": 9.6,
-            "max_match_mmd": 0.12,
             "min_island_len": 72,
+            "sw_tau_cos": 0.5,
+            "sw_gap": 0.3,
+            "max_match_dist": 0.1,
+            "min_match_eff_nt": 40,
         },
     },
 }
@@ -87,9 +110,27 @@ def get_model_config(name=None):
 
 
 def get_pca_path(model_name=None):
-    """Return absolute path to the PCA .npz file for the given model."""
+    """Return absolute path to the PCA .npz file for the given model.
+
+    This is the MATCHING PCA (used by the island-alignment / per-token path).
+    """
     cfg = get_model_config(model_name)
     return MODULES_DIR / "global_PCA" / cfg["pca_file"]
+
+
+def get_finding_pca_path(model_name=None):
+    """Return absolute path to the FINDING PCA .npz for the given model.
+
+    The signal/noise island scanner needs a richer projection than the k=16
+    matching PCA. Models may declare a dedicated ``finding_pca_file``; if absent
+    we fall back to ``pca_file`` so models without a finding-specific PCA (e.g.
+    RNA-FM) behave exactly as before.
+    """
+    cfg = get_model_config(model_name)
+    finding_file = cfg.get("finding_pca_file")
+    if finding_file is None:
+        return get_pca_path(model_name)
+    return MODULES_DIR / "global_PCA" / finding_file
 
 
 def get_logreg_path(model_name=None):

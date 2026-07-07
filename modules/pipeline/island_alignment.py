@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Island alignment via windowed MMD on RNA-FM PCA embeddings (Step 4).
+Island alignment (Step 4): match reference structured-RNA islands to query islands.
 
-For each gene, compares reference stability islands against query islands using:
-  1) Sliding-window RNA-FM embeddings projected to PCA space
-  2) MMD distance between per-window point clouds
-  3) Multi-chain Smith-Waterman alignment on the MMD matrix
+This module is the model-agnostic orchestrator. Per-pair scoring is delegated to
+a matcher (modules/pipeline/matchers/): RiNALMo embeds each island once and aligns
+the per-token cosine dotplot at nucleotide resolution (Smith-Waterman); RNA-FM
+re-embeds sliding windows and scores an MMD matrix (legacy). Both emit a common
+MatchResult, so the shared assignment/collinearity/output layer below is identical.
 
 Only provenance-valid pairs (from liftover) are computed.  Matching
 uses a three-stage pipeline:
@@ -48,12 +49,7 @@ project_root = script_dir.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from modules.utils.mmd_utils import (
-    compute_mmd_matrix,
-    compute_mmd_matrix_fast,
-    estimate_gamma_global,
-    precompute_self_kernels_batch,
-)
+from modules.pipeline.matchers.base import MatchResult, get_matcher
 
 # ---------------------------------------------------------------------------
 # Island alignment configuration
@@ -89,9 +85,14 @@ class IslandAlignmentConfig:
     sw_max_chains: int = 1          # max SW chains extracted per pair
 
     # -- match quality ---------------------------------------------------------
-    max_match_mmd: float = 0.15      # reject matches with mean MMD above tau
+    max_match_mmd: float = 0.15      # reject matches with mean MMD above tau (RNA-FM)
     min_match_eff_nt: int = 40       # minimum aligned nucleotides to keep
     max_queries_per_ref: int = 2     # max query islands one ref island can claim
+
+    # -- RiNALMo dotplot matcher (SW on the per-token cosine dotplot) ----------
+    sw_tau_cos: float = 0.5          # cosine offset in the dotplot (score = cos − tau)
+    sw_gap: float = 0.3              # SW gap penalty (up / left moves)
+    max_match_dist: float = 0.5      # reject matches with (1 − mean cos) above this
 
     # -- embedding strategy ----------------------------------------------------
     # "windowed"   : re-embed every sliding window in its own context (RNA-FM,
@@ -120,6 +121,11 @@ class IslandAlignmentConfig:
             mean_dist_threshold=p.get("mean_dist_threshold", cls.mean_dist_threshold),
             sw_tau=p.get("sw_tau", cls.sw_tau),
             max_match_mmd=p.get("max_match_mmd", cls.max_match_mmd),
+            min_match_eff_nt=p.get("min_match_eff_nt", cls.min_match_eff_nt),
+            # RiNALMo dotplot matcher params (ignored by RNA-FM window-MMD path)
+            sw_tau_cos=p.get("sw_tau_cos", cls.sw_tau_cos),
+            sw_gap=p.get("sw_gap", cls.sw_gap),
+            max_match_dist=p.get("max_match_dist", cls.max_match_dist),
             embed_strategy=get_embed_strategy(model_name),
         )
 
@@ -289,199 +295,10 @@ def _fetch_seq(accessor: TwoBitAccessor, chrom: str, start: int, end: int,
 
 
 # ===========================================================================
-# Async windowed embeddings via GPU executor
+# Per-pair scoring (moved to modules/pipeline/matchers/): RNA-FM window-MMD +
+# SW lives in matchers/rnafm.py; RiNALMo dotplot + nt-SW in matchers/rinalmo.py.
+# The orchestrator below dispatches to a matcher via get_matcher(model_name).
 # ===========================================================================
-
-async def _embed_island_windows(
-    seq: str,
-    gpu: GPUClient,
-    job_id: str,
-    island_id: str,
-    config: IslandAlignmentConfig = DEFAULT_CONFIG,
-) -> List[np.ndarray]:
-    """Produce per-window per-token PCA embeddings for one island.
-
-    Returns a list of (window_size, k) arrays — one per sliding window —
-    suitable for character-level MMD computation (NOT mean-pooled).
-
-    Two strategies (selected by ``config.embed_strategy``):
-
-    * ``"windowed"`` (RNA-FM): each window is re-embedded in its own short
-      context, because RNA-FM embeddings drift when flanking context changes.
-      One GPU call per window.
-
-    * ``"embed_once"`` (RiNALMo): the whole island is embedded ONCE and the
-      resulting per-token embedding is sliced into windows locally. Valid
-      because RiNALMo is context-stable (see context_dependency.ipynb), and
-      avoids N redundant GPU calls (≈100× fewer embeddings for dense strides).
-    """
-    seq_len = len(seq)
-    if seq_len < config.window_size:
-        emb = await gpu.embed(job_id, f"{island_id}:full", seq, mean_pool=False)
-        return [emb]
-
-    starts = list(range(0, seq_len - config.window_size + 1, config.stride))
-
-    if config.embed_strategy == "embed_once":
-        # One embedding for the whole island, then slice locally.
-        full = await gpu.embed(job_id, f"{island_id}:full", seq, mean_pool=False)
-        # full: (seq_len, k). Slice each window's token rows.
-        return [np.ascontiguousarray(full[s:s + config.window_size]) for s in starts]
-
-    # windowed: one GPU call per window (RNA-FM default)
-    windows = [seq[s:s + config.window_size] for s in starts]
-    tasks = [gpu.embed(job_id, f"{island_id}:w{i}", w, mean_pool=False)
-             for i, w in enumerate(windows)]
-    results = await asyncio.gather(*tasks)
-    return list(results)
-
-
-# ===========================================================================
-# Diagonal-run heuristic
-# ===========================================================================
-
-def best_diagonal_run(mat: np.ndarray, min_run: int = 3
-                      ) -> Tuple[float, int, int, int]:
-    """Find best mean diagonal run in MMD matrix."""
-    nr, nq = mat.shape
-    best_mean = float("inf")
-    best_len = 0
-    best_r = best_q = 0
-
-    for q_off in range(-nr + 1, nq):
-        r_start = max(0, -q_off)
-        q_start = max(0, q_off)
-        diag_len = min(nr - r_start, nq - q_start)
-        if diag_len < min_run:
-            continue
-        vals = [mat[r_start + k, q_start + k] for k in range(diag_len)]
-
-        for start in range(len(vals) - min_run + 1):
-            cum = sum(vals[start:start + min_run])
-            run = min_run
-            mean = cum / run
-            if mean < best_mean:
-                best_mean, best_len = mean, run
-                best_r, best_q = r_start + start, q_start + start
-            for end in range(start + min_run, len(vals)):
-                cum += vals[end]
-                run += 1
-                m = cum / run
-                if m < best_mean:
-                    best_mean, best_len = m, run
-                    best_r, best_q = r_start + start, q_start + start
-
-    return best_mean, best_len, best_r, best_q
-
-
-# ===========================================================================
-# Multi-chain Smith-Waterman on MMD matrix
-# ===========================================================================
-
-def _sw_single(S, nr, nq, max_drift, gap_open, gap_extend, mask=None):
-    """Single SW alignment."""
-    H = np.zeros((nr + 1, nq + 1))
-    tb_di = np.zeros((nr + 1, nq + 1), dtype=np.int32)
-    tb_dj = np.zeros((nr + 1, nq + 1), dtype=np.int32)
-    best_score = 0.0
-    best_pos = (0, 0)
-
-    for i in range(1, nr + 1):
-        for j in range(1, nq + 1):
-            if mask is not None and mask[i - 1, j - 1]:
-                continue
-            sij = S[i - 1, j - 1]
-            best_val = 0.0
-            best_di, best_dj = 0, 0
-
-            v = H[i - 1, j - 1] + sij
-            if v > best_val:
-                best_val, best_di, best_dj = v, 1, 1
-            for d in range(2, min(max_drift + 1, j + 1)):
-                cost = gap_open + gap_extend * (d - 2)
-                v = H[i - 1, j - d] + sij - cost
-                if v > best_val:
-                    best_val, best_di, best_dj = v, 1, d
-            for d in range(2, min(max_drift + 1, i + 1)):
-                cost = gap_open + gap_extend * (d - 2)
-                v = H[i - d, j - 1] + sij - cost
-                if v > best_val:
-                    best_val, best_di, best_dj = v, d, 1
-
-            H[i, j] = best_val
-            tb_di[i, j] = best_di
-            tb_dj[i, j] = best_dj
-            if best_val > best_score:
-                best_score = best_val
-                best_pos = (i, j)
-
-    path = []
-    i, j = best_pos
-    while H[i, j] > 0:
-        path.append((i - 1, j - 1))
-        di, dj = int(tb_di[i, j]), int(tb_dj[i, j])
-        if di == 0 and dj == 0:
-            break
-        i -= di
-        j -= dj
-    path.reverse()
-    return best_score, path
-
-
-def island_match_score_sw(mmd_matrix: np.ndarray,
-                          config: IslandAlignmentConfig = DEFAULT_CONFIG):
-    """Multi-chain local alignment on the MMD matrix."""
-    nr, nq = mmd_matrix.shape
-    if nr == 0 or nq == 0:
-        return 0.0, 0, float("inf"), []
-
-    S = config.sw_tau - mmd_matrix
-    mask = np.zeros((nr, nq), dtype=bool)
-    overlap = config.stride / config.window_size
-
-    all_paths: List[List[Tuple[int, int]]] = []
-    total_score = 0.0
-    all_mmds: List[float] = []
-    total_eff_nt = 0
-    best_first = None
-
-    for _ in range(config.sw_max_chains):
-        raw, path = _sw_single(S, nr, nq, config.sw_max_drift,
-                               config.sw_gap_open, config.sw_gap_extend, mask)
-        if not path or raw <= 0:
-            break
-        if best_first is None:
-            best_first = raw
-        elif raw < config.sw_min_score_frac * best_first:
-            break
-
-        all_paths.append(path)
-        total_score += raw * overlap
-        total_eff_nt += (config.window_size - config.stride) + len(path) * config.stride
-        all_mmds.extend(float(mmd_matrix[pi, pj]) for pi, pj in path)
-
-        for pi, pj in path:
-            for di in range(-1, 2):
-                for dj in range(-1, 2):
-                    ni, nj = pi + di, pj + dj
-                    if 0 <= ni < nr and 0 <= nj < nq:
-                        mask[ni, nj] = True
-
-    if not all_paths:
-        return 0.0, 0, float("inf"), []
-    return total_score, total_eff_nt, float(np.mean(all_mmds)), all_paths
-
-
-# ===========================================================================
-# Matched-region coordinate helpers
-# ===========================================================================
-
-def get_matched_region_nt(path, side: int,
-                          config: IslandAlignmentConfig = DEFAULT_CONFIG,
-                          ) -> Tuple[int, int]:
-    """Get matched region in nucleotide coordinates from alignment path."""
-    wins = [p[side] for p in path]
-    return min(wins) * config.stride, max(wins) * config.stride + config.window_size
 
 
 # ===========================================================================
@@ -541,84 +358,46 @@ def _compute_island_alignments(
     q_islands: List[Dict],
     ref_seqs: List[Optional[str]],
     q_seqs: List[Optional[str]],
-    ref_win_embs: List[Optional[List[np.ndarray]]],
-    q_win_embs: List[Optional[List[np.ndarray]]],
+    ref_reprs: List[Optional[object]],
+    q_reprs: List[Optional[object]],
     config: IslandAlignmentConfig,
     valid_pairs: Set[Tuple[int, int]],
+    matcher,
 ) -> List[Dict]:
-    """CPU-bound phase: MMD matrices, SW alignment, chain DP, row building.
+    """CPU-bound phase: per-pair scoring (via the model matcher) + assignment.
 
-    Runs in a thread pool so the event loop stays responsive and multiple
-    jobs can compute in parallel (numpy releases the GIL).
-
-    Only (ri, qi) combinations in valid_pairs are computed — each reference
-    island is restricted to query islands found in its liftover-projected
-    regions.
+    Runs in a thread pool so the event loop stays responsive. The matcher owns
+    per-pair scoring (RNA-FM window-MMD or RiNALMo dotplot + nt-SW) and returns
+    a MatchResult; everything below the scoring loop — quality filter, balanced
+    greedy assignment, collinearity, and row/chain serialization — is
+    model-agnostic. Only (ri, qi) in valid_pairs (liftover provenance) are scored.
     """
-    n_ref = len(ref_islands)
-    n_q = len(q_islands)
+    # Optional per-gene shared state (RNA-FM: MMD gamma + self-kernels; RiNALMo: None)
+    ctx = matcher.gene_precompute(ref_reprs, q_reprs, valid_pairs, config)
 
-    # Estimate gamma ONCE from the full pool of active windows for this
-    # gene, so that XX/YY self-kernels can be precomputed once per island
-    # and reused across all (ri, qi) pair comparisons.
-    all_windows = [w for embs in ref_win_embs if embs for w in embs]
-    all_windows.extend(w for embs in q_win_embs if embs for w in embs)
-    gamma = estimate_gamma_global(all_windows)
-
-    ref_xx_per_island: List[Optional[np.ndarray]] = [None] * n_ref
-    query_yy_per_island: List[Optional[np.ndarray]] = [None] * n_q
-    for ri in {ri for ri, _ in valid_pairs}:
-        ref_xx_per_island[ri] = precompute_self_kernels_batch(
-            ref_win_embs[ri], gamma)
-    for qi in {qi for _, qi in valid_pairs}:
-        query_yy_per_island[qi] = precompute_self_kernels_batch(
-            q_win_embs[qi], gamma)
-
-    mmd_matrices: Dict[Tuple[int, int], np.ndarray] = {}
-
+    results: Dict[Tuple[int, int], MatchResult] = {}
     for ri, qi in sorted(valid_pairs):
-        mat, nc, ns = compute_mmd_matrix_fast(
-            ref_win_embs[ri], q_win_embs[qi], gamma,
-            ref_xx_per_island[ri], query_yy_per_island[qi],
-            config.mmd_skip, config.mean_dist_threshold,
-        )
-        mmd_matrices[(ri, qi)] = mat
-
-    # SW scoring
-    sw_results = []
-    sw_paths = {}
-    for (ri, qi), mat in sorted(mmd_matrices.items()):
-        sc, eff, mm, paths = island_match_score_sw(mat, config)
-        sw_paths[(ri, qi)] = paths
-        sw_results.append({
-            "ri": ri, "qi": qi,
-            "sw_score": sc, "sw_eff_nt": eff, "sw_mean_mmd": mm,
-        })
+        results[(ri, qi)] = matcher.score_pair(ri, qi, ref_reprs, q_reprs, ctx, config)
 
     # ---- Quality filter + balanced greedy + collinearity ---------------------
-    #
-    # 1. Filter: positive score, mean MMD ≤ threshold, min aligned length.
-    # 2. Balanced greedy: sort all candidates by MMD (best first), assign
-    #    each pair if Q is unassigned and R hasn't reached its cap.
-    #    Distributes Q's across R's instead of letting one R monopolize.
-    # 3. Collinearity: keep the largest non-crossing subset (LIS/LDS)
-    #    so connections don't form "spaghetti".
-
+    # 1. Filter: positive score, distance <= per-model ceiling, min aligned nt.
+    # 2. Balanced greedy: lowest-distance first; each Q once, each R capped.
+    # 3. Collinearity: largest non-crossing subset (LIS/LDS) to avoid spaghetti.
+    ceiling = matcher.dist_ceiling(config)
     candidates = [
-        r for r in sw_results
-        if (r["sw_score"] > 0
-            and r["sw_mean_mmd"] <= config.max_match_mmd
-            and r["sw_eff_nt"] >= config.min_match_eff_nt)
+        {"ri": ri, "qi": qi, "res": res}
+        for (ri, qi), res in sorted(results.items())
+        if (res.score > 0
+            and res.dist <= ceiling
+            and res.eff_nt >= config.min_match_eff_nt)
     ]
 
-    # Balanced greedy: best-quality pairs first; each Q assigned once,
-    # each R limited to max_queries_per_ref Q's.
-    candidates.sort(key=lambda r: r["sw_mean_mmd"])
+    candidates.sort(key=lambda c: c["res"].dist)
     assigned_qi: Set[int] = set()
     ri_count: Dict[int, int] = defaultdict(int)
     pruned = []
-    for r in candidates:
-        ri, qi = r["ri"], r["qi"]
+    for c in candidates:
+        ri, qi = c["ri"], c["qi"]
         if qi in assigned_qi:
             continue
         if ri_count[ri] >= config.max_queries_per_ref:
@@ -627,16 +406,12 @@ def _compute_island_alignments(
         ri_count[ri] += 1
         pruned.append((ri, qi))
 
-    # Collinearity: remove crossing matches via longest monotonic subseq.
-    # Determine strand relationship: if ref and query are on opposite
-    # strands, collinear order means Q indices decrease as R increases.
+    # Collinearity: strand relationship decides increasing vs decreasing order.
     ref_strand = ref_islands[0].get("strand", 1) if ref_islands else 1
     q_strand = q_islands[0].get("strand", 1) if q_islands else 1
     same_strand = (ref_strand == q_strand)
 
-    # Sort by ref index; for same R, sort by Q index
     pruned.sort(key=lambda x: (x[0], x[1]))
-
     if len(pruned) > 1:
         q_seq = [qi for _, qi in pruned]
         if same_strand:
@@ -645,13 +420,13 @@ def _compute_island_alignments(
             keep_idx = _longest_decreasing_subsequence(q_seq)
         pruned = [pruned[i] for i in keep_idx]
 
-    # Intra-island collinearity: when one ref island matches multiple
-    # query islands, the matched sub-regions within the ref island must
-    # be ordered consistently (no crossing bands from the same R).
+    # Intra-island collinearity: sub-regions within one ref island must be
+    # ordered consistently. Use each pair's first chain's ref start position
+    # (nt); monotonicity is identical to window-index order (stride > 0).
     ri_groups: Dict[int, List[Tuple[int, int, int]]] = defaultdict(list)
     for idx, (ri, qi) in enumerate(pruned):
-        paths = sw_paths.get((ri, qi), [])
-        ref_pos = min(p[0] for p in paths[0]) if paths and paths[0] else 0
+        chains = results[(ri, qi)].chains
+        ref_pos = chains[0].ref_from if chains else 0
         ri_groups[ri].append((idx, qi, ref_pos))
 
     drop_indices: Set[int] = set()
@@ -660,8 +435,7 @@ def _compute_island_alignments(
             continue
         group.sort(key=lambda x: x[1])  # sort by qi
         ref_positions = [ref_pos for _, _, ref_pos in group]
-        keep = _longest_increasing_subsequence(ref_positions)
-        kept_set = set(keep)
+        kept_set = set(_longest_increasing_subsequence(ref_positions))
         for i, (orig_idx, _, _) in enumerate(group):
             if i not in kept_set:
                 drop_indices.add(orig_idx)
@@ -671,24 +445,16 @@ def _compute_island_alignments(
 
     accepted = set(pruned)
 
-    # Build output rows
+    # Build output rows (schema/columns unchanged; diag_mmd/chain "mmd" now hold
+    # the matcher's distance — MMD for RNA-FM, 1-cos for RiNALMo).
     rows = []
-    for r in candidates:
-        ri, qi = r["ri"], r["qi"]
+    for c in candidates:
+        ri, qi = c["ri"], c["qi"]
         if (ri, qi) not in accepted:
             continue
-
+        res = c["res"]
         ri_isl = ref_islands[ri]
         qi_isl = q_islands[qi]
-
-        paths = sw_paths.get((ri, qi), [])
-        if not paths or all(len(p) == 0 for p in paths):
-            mat = mmd_matrices.get((ri, qi))
-            if mat is not None:
-                mr = max(2, min(mat.shape[0], mat.shape[1]) // 3)
-                _, dl, dr, dq = best_diagonal_run(mat, min_run=mr)
-                if dl >= 2:
-                    paths = [[(dr + k, dq + k) for k in range(dl)]]
 
         row = {
             "gene_id": gene_id,
@@ -703,26 +469,19 @@ def _compute_island_alignments(
             "query_start": qi_isl["start"],
             "query_end": qi_isl["end"],
             "query_len": qi_isl["end"] - qi_isl["start"],
-            "n_chains": len(paths),
-            "diag_mmd": f"{r['sw_mean_mmd']:.4f}",
+            "n_chains": len(res.chains),
+            "diag_mmd": f"{res.dist:.4f}",
         }
 
         chains = []
-        for ci in range(len(paths)):
-            if paths[ci]:
-                rs, re = get_matched_region_nt(paths[ci], side=0, config=config)
-                re = min(re, len(ref_seqs[ri]))
-                qs, qe = get_matched_region_nt(paths[ci], side=1, config=config)
-                qe = min(qe, len(q_seqs[qi]))
-                pmmd = np.mean([mmd_matrices[(ri, qi)][p[0], p[1]]
-                                for p in paths[ci]])
-                chains.append({
-                    "ref_from": int(rs),
-                    "ref_to": int(re),
-                    "q_from": int(qs),
-                    "q_to": int(qe),
-                    "mmd": f"{pmmd:.4f}",
-                })
+        for ch in res.chains:
+            chains.append({
+                "ref_from": int(ch.ref_from),
+                "ref_to": int(min(ch.ref_to, len(ref_seqs[ri]))),
+                "q_from": int(ch.q_from),
+                "q_to": int(min(ch.q_to, len(q_seqs[qi]))),
+                "mmd": f"{ch.dist:.4f}",
+            })
 
         row["chains_json"] = json.dumps(chains)
         rows.append(row)
@@ -745,6 +504,7 @@ async def _process_job(
     config: IslandAlignmentConfig = DEFAULT_CONFIG,
     cpu_pool: concurrent.futures.ThreadPoolExecutor = None,
     clusters_data: Dict = None,
+    matcher=None,
 ) -> List[Dict]:
     """Process a single island alignment job.
 
@@ -832,27 +592,27 @@ async def _process_job(
         q_seqs[qi] = _fetch_seq(query_acc, i["chrom"], i["start"], i["end"],
                                 i["strand"])
 
-    # Async phase: compute window embeddings only for active islands
+    # Async phase: fetch each active island's representation via the matcher
+    # (RiNALMo = one embed-once per island; RNA-FM = per-window re-embedding).
     ref_embed_tasks = {
-        ri: _embed_island_windows(ref_seqs[ri], gpu, gene_id, f"R{ri}", config)
+        ri: matcher.prepare_island(ref_seqs[ri], gpu, gene_id, f"R{ri}", config)
         for ri in active_ri
     }
     q_embed_tasks = {
-        qi: _embed_island_windows(q_seqs[qi], gpu, gene_id, f"Q{qi}", config)
+        qi: matcher.prepare_island(q_seqs[qi], gpu, gene_id, f"Q{qi}", config)
         for qi in active_qi
     }
-    all_keys = list(ref_embed_tasks.keys()) + list(q_embed_tasks.keys())
     all_coros = list(ref_embed_tasks.values()) + list(q_embed_tasks.values())
     all_embs = await asyncio.gather(*all_coros)
 
-    ref_win_embs: List[Optional[List[np.ndarray]]] = [None] * n_ref
-    q_win_embs: List[Optional[List[np.ndarray]]] = [None] * n_q
+    ref_reprs: List[Optional[object]] = [None] * n_ref
+    q_reprs: List[Optional[object]] = [None] * n_q
     idx = 0
     for ri in active_ri:
-        ref_win_embs[ri] = all_embs[idx]
+        ref_reprs[ri] = all_embs[idx]
         idx += 1
     for qi in active_qi:
-        q_win_embs[qi] = all_embs[idx]
+        q_reprs[qi] = all_embs[idx]
         idx += 1
 
     # CPU-bound phase: offload to thread pool (numpy releases the GIL)
@@ -861,7 +621,7 @@ async def _process_job(
         cpu_pool,
         _compute_island_alignments,
         gene_id, ref_islands, q_islands, ref_seqs, q_seqs,
-        ref_win_embs, q_win_embs, config, valid_pairs,
+        ref_reprs, q_reprs, config, valid_pairs, matcher,
     )
     return rows
 
@@ -1016,10 +776,17 @@ def run_island_alignment_scheduler(
     """
     if config is None:
         config = IslandAlignmentConfig.for_model(model_name)
-    print(f"# Island alignment: model={model_name or 'default'}, "
-          f"strategy={config.embed_strategy}, "
-          f"window={config.window_size}, stride={config.stride}, "
-          f"sw_tau={config.sw_tau}, mean_dist_thr={config.mean_dist_threshold}")
+    matcher = get_matcher(model_name)
+    if matcher.representation == "full":
+        print(f"# Island alignment: model={model_name or 'default'}, "
+              f"matcher={type(matcher).__name__} (embed-once dotplot + nt-SW), "
+              f"tau_cos={config.sw_tau_cos}, gap={config.sw_gap}, "
+              f"max_dist={config.max_match_dist}, min_eff_nt={config.min_match_eff_nt}")
+    else:
+        print(f"# Island alignment: model={model_name or 'default'}, "
+              f"matcher={type(matcher).__name__} (windowed MMD + SW), "
+              f"window={config.window_size}, stride={config.stride}, "
+              f"sw_tau={config.sw_tau}, max_match_mmd={config.max_match_mmd}")
 
     # Pin numpy/BLAS to single-threaded: we handle parallelism ourselves via
     # the thread pool, so internal threading would cause oversubscription.
@@ -1092,7 +859,7 @@ def run_island_alignment_scheduler(
                     rows = await _process_job(
                         job, ref_data, u_to_query, query_islands_data,
                         ref_acc, query_acc, gpu, config,
-                        cpu_pool, clusters_data,
+                        cpu_pool, clusters_data, matcher,
                     )
                     for row in rows:
                         await result_queue.put(row)

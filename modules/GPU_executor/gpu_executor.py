@@ -32,7 +32,7 @@ MODULES_DIR = Path(__file__).resolve().parents[1]
 if str(MODULES_DIR.parent) not in sys.path:
     sys.path.insert(0, str(MODULES_DIR.parent))
 
-from modules.model_registry import load_model, get_pca_path
+from modules.model_registry import load_model, get_pca_path, get_finding_pca_path
 
 
 @dataclass
@@ -43,7 +43,7 @@ class ExecutorConfig:
     max_wait: float = 0.2
     device: str = "auto"
     enable_logging: bool = False
-    model_name: str = "rnafm"
+    model_name: str = "rinalmo"
 
 
 class PCAProjector:
@@ -82,6 +82,23 @@ def _parse_mean_pool(flags) -> bool:
     if isinstance(flags, dict):
         return bool(flags.get("mean_pool", False))
     return False
+
+
+def _parse_pca_role(flags, mean_pool: bool) -> str:
+    """Which PCA space to project into: "find" (scanner) or "match" (alignment).
+
+    An explicit ``pca_role`` in the flags dict wins. Otherwise we honour the
+    invariant that has always held in this pipeline: the mean-pooled path is the
+    signal/noise *finding* scanner, and the per-token path is island *matching*.
+    Deriving the role from ``mean_pool`` keeps every existing caller working with
+    no change, while the explicit flag decouples pooling from projection space for
+    any future consumer that needs the other combination.
+    """
+    if isinstance(flags, dict):
+        role = flags.get("pca_role")
+        if role in ("find", "match"):
+            return role
+    return "find" if mean_pool else "match"
 
 
 def _collect_batch(input_queue, cfg: ExecutorConfig):
@@ -133,9 +150,20 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
         except Exception as e:
             print(f"# GPU executor: torch.compile unavailable ({e})")
 
+    # Two projectors: the matching PCA (per-token / island alignment) and the
+    # finding PCA (mean-pooled / signal-noise scanner). They are the same file
+    # for models without a dedicated finding PCA (e.g. RNA-FM), in which case we
+    # avoid loading it twice.
     pca_path = get_pca_path(model_name)
     pca = PCAProjector(pca_path, device)
-    print(f"# GPU executor: {model_name} ready (PCA: {pca_path.name})")
+    find_pca_path = get_finding_pca_path(model_name)
+    if find_pca_path == pca_path:
+        pca_find = pca
+        print(f"# GPU executor: {model_name} ready (PCA: {pca_path.name})")
+    else:
+        pca_find = PCAProjector(find_pca_path, device)
+        print(f"# GPU executor: {model_name} ready "
+              f"(match PCA: {pca_path.name}, find PCA: {find_pca_path.name})")
 
     # Monitoring stats
     batch_sizes = []
@@ -158,13 +186,16 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
         sequence_ids = []
         sequences = []
         mean_flags = []
+        pca_roles = []
 
         for job in jobs:
             worker_id, sequence_id, sequence, flags = job
             worker_ids.append(worker_id)
             sequence_ids.append(sequence_id)
             sequences.append(_normalize_sequence(sequence))
-            mean_flags.append(_parse_mean_pool(flags))
+            mean_pool = _parse_mean_pool(flags)
+            mean_flags.append(mean_pool)
+            pca_roles.append(_parse_pca_role(flags, mean_pool))
 
         tokens = tokenize_fn(sequences)
 
@@ -180,35 +211,35 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
             length = len(seq)
             token_embeds.append(reps[i, 1:1 + length, :])
 
-        no_mean_indices = [i for i, flag in enumerate(mean_flags) if not flag]
-        mean_indices = [i for i, flag in enumerate(mean_flags) if flag]
-
-        pca_token_slices = {}
-        if no_mean_indices:
-            concat_tokens = torch.cat([token_embeds[i] for i in no_mean_indices], dim=0)
-            pca_concat = pca.project(concat_tokens)
-            pca_concat_cpu = pca_concat.detach().cpu()
-            sizes = [token_embeds[i].shape[0] for i in no_mean_indices]
-            splits = torch.split(pca_concat_cpu, sizes, dim=0)
-            for idx, split in zip(no_mean_indices, splits):
-                pca_token_slices[idx] = split
-
-        pca_mean_vecs = {}
-        if mean_indices:
-            mean_vecs = torch.stack([token_embeds[i].mean(dim=0) for i in mean_indices], dim=0)
-            pca_means = pca.project(mean_vecs)
-            pca_means_cpu = pca_means.detach().cpu()
-            for idx, vec in zip(mean_indices, pca_means_cpu):
-                pca_mean_vecs[idx] = vec
+        # Project each item into its PCA space, batched by (pooling, projector).
+        # Pooling follows mean_pool; projector follows pca_role ("find" -> finding
+        # PCA, "match" -> matching PCA). The two combinations used in practice are
+        # (mean-pool, find) for the scanner and (per-token, match) for alignment;
+        # the loop also covers the other two combinations for free.
+        projectors = {"find": pca_find, "match": pca}
+        pca_results = {}
+        for do_mean in (False, True):
+            for role, projector in projectors.items():
+                group = [i for i in range(len(jobs))
+                         if mean_flags[i] == do_mean and pca_roles[i] == role]
+                if not group:
+                    continue
+                if do_mean:
+                    vecs = torch.stack([token_embeds[i].mean(dim=0) for i in group], dim=0)
+                    proj = projector.project(vecs).detach().cpu()
+                    for idx, vec in zip(group, proj):
+                        pca_results[idx] = vec
+                else:
+                    concat_tokens = torch.cat([token_embeds[i] for i in group], dim=0)
+                    proj = projector.project(concat_tokens).detach().cpu()
+                    sizes = [token_embeds[i].shape[0] for i in group]
+                    for idx, split in zip(group, torch.split(proj, sizes, dim=0)):
+                        pca_results[idx] = split
 
         output_start = time.time()
         payload = []
         for i in range(len(jobs)):
-            if mean_flags[i]:
-                emb = pca_mean_vecs[i].numpy()
-            else:
-                emb = pca_token_slices[i].numpy()
-            payload.append((worker_ids[i], sequence_ids[i], emb))
+            payload.append((worker_ids[i], sequence_ids[i], pca_results[i].numpy()))
         output_queue.put(payload)
         output_time = time.time() - output_start
 

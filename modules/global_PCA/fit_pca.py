@@ -8,10 +8,13 @@ Collects embeddings from:
 
 Window sizes: 48-256 nt.  Target: ~100k position-level embeddings -> PCA(k).
 
+This fits the MATCHING PCA (per-token, k from registry: 16). The finding
+scanner uses a separate PCA built by build_rinalmo_finding.py, not this script.
+
 Usage:
-    python fit_pca.py                       # default: RNA-FM, k=16
-    python fit_pca.py --model rinalmo       # RiNALMo, k from registry (48)
-    python fit_pca.py --model rinalmo --pca-components 64
+    python fit_pca.py                       # default: RiNALMo, k=16 (matching PCA)
+    python fit_pca.py --model rnafm         # RNA-FM (deprecated), k=16
+    python fit_pca.py --model rinalmo --pca-components 32
 """
 
 import sys
@@ -51,7 +54,7 @@ NCRNA_BIOTYPES = ['lncRNA', 'snoRNA', 'miRNA', 'snRNA', 'misc_RNA', 'scaRNA']
 def parse_args():
     parser = argparse.ArgumentParser(description="Train PCA on RNA model embeddings")
     parser.add_argument("--model", default=None,
-                        help="Model name from registry (default: rnafm)")
+                        help="Model name from registry (default: rinalmo)")
     parser.add_argument("--pca-components", type=int, default=None,
                         help="Number of PCA components (default: from registry)")
     parser.add_argument("--target-embeddings", type=int, default=TARGET_EMBEDDINGS,
@@ -153,7 +156,7 @@ def main():
     args = parse_args()
 
     model_cfg = get_model_config(args.model)
-    model_name = args.model or "rnafm"
+    model_name = args.model or "rinalmo"  # match get_model_config's default (DEFAULT_MODEL)
     n_components = args.pca_components or model_cfg["pca_components"]
     target_embeddings = args.target_embeddings
 

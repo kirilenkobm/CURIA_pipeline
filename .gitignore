@@ -77,6 +77,7 @@ temp/
 *.db
 *.pkl
 *.json
+*.log
 
 # Pipeline outputs (users should specify their own output directories)
 output/
@@ -91,6 +92,7 @@ hg38_vs_mm39_*
 big_test/
 todo.txt
 draft/
+smoke_out_*/
 
 # Biomart metadata
 *.biomart

@@ -9,7 +9,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def train_model(data_path=None, model_path=None):
     if data_path is None:
-        data_path = os.path.join(SCRIPT_DIR, 'train.npz')
+        data_path = os.path.join(SCRIPT_DIR, 'rnafm_finding_trainset.npz')
     if model_path is None:
         model_path = os.path.join(SCRIPT_DIR, 'logreg_noise_model.json')
     print(f"Loading dataset from {data_path}...")
