@@ -30,7 +30,7 @@ UTILS_DIR = MODULES_DIR / "utils"
 from pyrion import read_chain_file
 
 from modules.GPU_executor.gpu_executor import ExecutorConfig, run_gpu_executor
-from modules.model_registry import get_logreg_path, get_island_scan_params
+from modules.model_registry import get_logreg_path, get_island_scan_params, get_rna_toga_model_path
 from modules.utils.chrom_sizes import write_chrom_sizes_from_2bit
 from modules.utils.output_paths import OutputPaths
 from modules.converters.union_transcript import collapse_to_union_transcripts
@@ -144,6 +144,10 @@ def run_toga_step(
     print("# Running RNA TOGA...")
     toga_script = RNA_TOGA_DIR / "rna_toga.py"
 
+    # Orthology model is backend-conditional: rinalmo -> GBM, rnafm -> legacy logreg
+    # (resolved by the registry, with automatic fallback to model.json).
+    rna_toga_model = get_rna_toga_model_path(args.model)
+
     toga_cmd = [
         sys.executable,
         str(toga_script),
@@ -153,6 +157,8 @@ def run_toga_step(
         str(paths.chrom_sizes),
         str(paths.toga_regions),
         str(paths.toga_classification),
+        "--model-path",
+        str(rna_toga_model),
     ]
 
     print("RNA TOGA called with:")
@@ -162,6 +168,7 @@ def run_toga_step(
     print(f"  chrom_sizes: {paths.chrom_sizes}")
     print(f"  output_regions: {paths.toga_regions}")
     print(f"  output_classification: {paths.toga_classification}")
+    print(f"  model ({args.model}): {rna_toga_model}")
     print(f"\nRunning command: {' '.join(toga_cmd)}\n")
 
     # Run TOGA in a separate subprocess to isolate native runtimes and avoid segmentation faults.

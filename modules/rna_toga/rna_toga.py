@@ -111,31 +111,54 @@ def map_orthologs(ortholog_map, chains, transcripts):
     return pairs_to_q_intervals
 
 
-def assign_label(pred):
+def assign_label(pred, threshold=ORTHOLOGY_THRESHOLD):
     if pred == SPANNING_SCORE:
         return SPAN
     elif pred == PROCESSED_PSEUDOGENE_SCORE:
         return PROCESSED_PSEUDOGENES
-    elif pred < ORTHOLOGY_THRESHOLD:
+    elif pred < threshold:
         return PARA
     else:
         return ORTH
 
 
-def _load_logreg_model(model_path: str) -> dict:
+def _load_model(model_path: str) -> dict:
+    """Load either a logistic-regression or a GBM model. Dispatches on `model_type`."""
     if not os.path.isfile(model_path):
-        raise FileNotFoundError(f"Logreg model not found: {model_path}")
+        raise FileNotFoundError(f"Model not found: {model_path}")
     with open(model_path, "r") as f:
         model = json.load(f)
+    model_type = model.get("model_type", "logistic_regression")
+    common = {
+        "type": model_type,
+        "threshold": float(model.get("threshold", ORTHOLOGY_THRESHOLD)),
+        "biotype_thresholds": model.get("biotype_thresholds", {}) or {},
+    }
+    if model_type == "gbm":
+        required = {"features", "mean", "scale", "init", "lr", "trees"}
+        missing = required - set(model.keys())
+        if missing:
+            raise ValueError(f"Missing keys in GBM model: {sorted(missing)}")
+        common["gbm"] = model
+        return common
     coeffs = model.get("coefficients", {})
     required = {"synteny_log1p", "gl_exo", "flank_cov", "intercept"}
     missing = required - set(coeffs.keys())
     if missing:
         raise ValueError(f"Missing coefficients in model: {sorted(missing)}")
-    return {
-        "coeffs": coeffs,
-        "threshold": float(model.get("threshold", ORTHOLOGY_THRESHOLD)),
-    }
+    common["coeffs"] = coeffs
+    return common
+
+
+def _build_feature_matrix(df: pd.DataFrame, features) -> np.ndarray:
+    """Assemble the feature matrix in the model's declared order (synteny is log1p'd)."""
+    cols = []
+    for name in features:
+        if name == "synteny_log1p":
+            cols.append(np.log1p(df["synteny"].fillna(0.0).to_numpy(dtype=float)))
+        else:
+            cols.append(df[name].fillna(0.0).to_numpy(dtype=float))
+    return np.column_stack(cols)
 
 
 def _logreg_predict_proba(df: pd.DataFrame, coeffs: dict) -> np.ndarray:
@@ -151,18 +174,49 @@ def _logreg_predict_proba(df: pd.DataFrame, coeffs: dict) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-score))
 
 
+def _gbm_predict_proba(df: pd.DataFrame, gbm: dict) -> np.ndarray:
+    """Score a GBM exported by train_lncrna_gbm.py — numpy-vectorised, no sklearn needed."""
+    X = _build_feature_matrix(df, gbm["features"])
+    Z = (X - np.asarray(gbm["mean"])) / np.asarray(gbm["scale"])
+    raw = np.full(len(df), float(gbm["init"]), dtype=float)
+    lr = float(gbm["lr"])
+    for tr in gbm["trees"]:
+        f = np.asarray(tr["f"]); thr = np.asarray(tr["t"])
+        left = np.asarray(tr["l"]); right = np.asarray(tr["r"]); val = np.asarray(tr["v"])
+        node = np.zeros(len(df), dtype=int)
+        while True:
+            is_leaf = left[node] == -1
+            if is_leaf.all():
+                break
+            act = ~is_leaf
+            cur = node[act]
+            go_left = Z[act, f[cur]] <= thr[cur]
+            node[act] = np.where(go_left, left[cur], right[cur])
+        raw += lr * val[node]
+    return 1.0 / (1.0 + np.exp(-raw))
+
+
+def _predict_proba(df: pd.DataFrame, model: dict) -> np.ndarray:
+    if model["type"] == "gbm":
+        return _gbm_predict_proba(df, model["gbm"])
+    return _logreg_predict_proba(df, model["coeffs"])
+
+
 def classify_table(df: pd.DataFrame, model_path: str) -> pd.DataFrame:
     df = df.copy()
     df["single_exon"] = (df["ex_num"] == 1).astype(int)
-    df = df.fillna(0.0)
+    for col in ("gl_exo", "exlen_to_qlen", "synteny", "flank_cov", "exon_perc", "ex_num"):
+        if col in df.columns:
+            df[col] = df[col].fillna(0.0)
+
+    model = _load_model(model_path)
 
     df["pred"] = np.nan
     df.loc[(df["exon_perc"] == 0) & (df["synteny"] > 1), "pred"] = SPANNING_SCORE
 
-    model = _load_logreg_model(model_path)
     mask = df["pred"].isna()
     if mask.any():
-        df.loc[mask, "pred"] = _logreg_predict_proba(df.loc[mask], model["coeffs"])
+        df.loc[mask, "pred"] = _predict_proba(df.loc[mask], model)
 
     processed_pseudogenes_mask = (
         (df["single_exon"] == 0)
@@ -173,7 +227,15 @@ def classify_table(df: pd.DataFrame, model_path: str) -> pd.DataFrame:
     )
 
     df.loc[processed_pseudogenes_mask, "pred"] = PROCESSED_PSEUDOGENE_SCORE
-    df["label"] = df["pred"].apply(assign_label)
+
+    # per-biotype threshold: lncRNA is relaxed (high-recall candidate generation), others keep global
+    global_thr = model["threshold"]
+    bt_thr = model["biotype_thresholds"]
+    if bt_thr and "biotype" in df.columns:
+        thresholds = df["biotype"].map(lambda b: float(bt_thr.get(b, global_thr))).to_numpy()
+    else:
+        thresholds = np.full(len(df), global_thr, dtype=float)
+    df["label"] = [assign_label(p, t) for p, t in zip(df["pred"].to_numpy(), thresholds)]
     return df
 
 
@@ -319,6 +381,12 @@ def parse_args():
     app.add_argument("reference_chrom_sizes", help="Path to reference chromosome sizes file (tab-separated: chrom_name\tsize)")
     app.add_argument("out_orthologous_regions_mapping", help="Output with orthologous regions")
     app.add_argument("out_classification_table", help="Classification table with predictions")
+    app.add_argument(
+        "--model-path",
+        default=LOGREG_MODEL_PATH,
+        help="Path to the orthology model JSON (logreg model.json or a GBM gbm_model.json). "
+             f"Default: {LOGREG_MODEL_PATH}",
+    )
 
     if len(sys.argv) == 1:
         app.print_help()
@@ -331,6 +399,18 @@ def _time_delta(t0: dt):
     return dt.now() - t0
 
 
+def _read_biotype_map(metadata_file: str) -> dict:
+    """Read transcript_id -> biotype from the union metadata TSV, if it carries a biotype column."""
+    try:
+        meta = pd.read_csv(metadata_file, sep="\t", dtype=str)
+    except Exception:
+        return {}
+    bcol = next((c for c in meta.columns if c.lower() in ("biotype", "transcript_biotype")), None)
+    if bcol is None or "transcript_id" not in meta.columns:
+        return {}
+    return dict(zip(meta["transcript_id"], meta[bcol]))
+
+
 def run_toga_mini(
     chain_file: str,
     transcript_file: str,
@@ -338,13 +418,15 @@ def run_toga_mini(
     reference_chrom_sizes: str,
     out_orthologous_regions_mapping: str,
     out_classification_table: str,
+    model_path: str = LOGREG_MODEL_PATH,
 ):
     ensure_parent_directory(out_orthologous_regions_mapping)
     ensure_parent_directory(out_classification_table)
 
-    if not os.path.isfile(LOGREG_MODEL_PATH):
-        print(f"Error: logreg model not found at {LOGREG_MODEL_PATH}")
+    if not os.path.isfile(model_path):
+        print(f"Error: orthology model not found at {model_path}")
         sys.exit(1)
+    print(f"Using orthology model: {model_path}")
 
     t0 = dt.now()
     print(f"{t0}: Reading input files...")
@@ -387,8 +469,14 @@ def run_toga_mini(
     df = pd.DataFrame(features, columns=FEATURE_COLUMNS)
     print(f"{_time_delta(t0)}: Features extracted. {len(features)} entries in total")
 
+    # attach transcript biotype (enables per-biotype thresholds, e.g. relaxed lncRNA);
+    # the metadata file is the same union metadata passed as isoforms_file.
+    biotype_map = _read_biotype_map(isoforms_file)
+    if biotype_map:
+        df["biotype"] = df["transcript_id"].map(biotype_map)
+
     print(f"{_time_delta(t0)}: Classifying table...")
-    classified_df = classify_table(df, LOGREG_MODEL_PATH)
+    classified_df = classify_table(df, model_path)
     print(f"{_time_delta(t0)}: Table classified.")
 
     print(f"{_time_delta(t0)}: Writing classification table...")
@@ -397,7 +485,7 @@ def run_toga_mini(
 
     print(f"{_time_delta(t0)}: Making orthologous regions mapping...")
     ortholog_map = (
-        classified_df[classified_df["pred"] > 0.5]
+        classified_df[classified_df["label"] == ORTH]
         .groupby("chain_id")["transcript_id"]
         .apply(list)
         .to_dict()
@@ -416,6 +504,7 @@ def main():
         args.reference_chrom_sizes,
         args.out_orthologous_regions_mapping,
         args.out_classification_table,
+        args.model_path,
     )
 
 

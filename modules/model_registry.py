@@ -23,6 +23,9 @@ MODELS = {
         "module_path": "RNA-FM",
         "pca_file": "rnafm_pca_k16.npz",
         "logreg_file": "logreg_noise_model.json",
+        # Orthology classifier (rna_toga): the legacy 3-feature logreg stays on
+        # the deprecated RNA-FM path.
+        "rna_toga_model": "model.json",
         "emb_dim": 640,
         "pca_components": 16,
         # RNA-FM embeddings drift with flanking context, so every sliding
@@ -59,6 +62,10 @@ MODELS = {
         # Built by modules/logreg_signal_noise/build_rinalmo_finding.py.
         "finding_pca_file": "rinalmo_pca_find_k64.npz",
         "logreg_file": "logreg_noise_model_rinalmo.json",
+        # Orthology classifier (rna_toga): the RiNALMo path uses the GBM model
+        # (see modules/rna_toga/train_lncrna_gbm.py). Falls back to the legacy
+        # logreg model.json automatically if gbm_model.json is not present.
+        "rna_toga_model": "gbm_model.json",
         "emb_dim": 1280,
         "pca_components": 16,
         # RiNALMo is context-stable (~0 MMD drift under flanking context, see
@@ -137,6 +144,21 @@ def get_logreg_path(model_name=None):
     """Return absolute path to the logreg JSON for the given model."""
     cfg = get_model_config(model_name)
     return MODULES_DIR / "logreg_signal_noise" / cfg["logreg_file"]
+
+
+def get_rna_toga_model_path(model_name=None):
+    """Return absolute path to the rna_toga orthology model JSON for the given backend.
+
+    rinalmo -> gbm_model.json, rnafm -> model.json. Falls back to the legacy
+    model.json if the configured file does not exist yet (keeps the pipeline
+    working before the GBM is trained / while the flip is under review).
+    """
+    cfg = get_model_config(model_name)
+    fname = cfg.get("rna_toga_model", "model.json")
+    path = MODULES_DIR / "rna_toga" / fname
+    if not path.exists():
+        return MODULES_DIR / "rna_toga" / "model.json"
+    return path
 
 
 def get_embed_strategy(model_name=None):

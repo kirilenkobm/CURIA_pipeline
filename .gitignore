@@ -21,6 +21,7 @@ wheels/
 *.egg
 MANIFEST
 *.log
+bin/*
 
 # SQLite
 *.sqlite
@@ -35,6 +36,7 @@ env/
 
 # Conda environments
 conda_env/
+.micromamba
 
 # IDE
 .idea/
@@ -61,6 +63,8 @@ Thumbs.db
 *.chain.gz
 !input_data/chains/test_sample.chain
 !input_data/chains/test_sample.chain.gz
+input_data/supply/rfam/*
+input_data/supply/rnacentral/*
 
 # BED files (except example/reference files in docs or examples directories)
 *.bed
@@ -78,7 +82,10 @@ temp/
 *.db
 *.pkl
 *.json
+!modules/rna_toga/model.json
+!modules/rna_toga/gbm_model.json
 *.log
+temp_*
 
 # Pipeline outputs (users should specify their own output directories)
 output/
@@ -94,6 +101,8 @@ big_test/
 todo.txt
 draft/
 smoke_out_*/
+smoke_test_*/
+*/_cmscan_tmp/*
 
 # Biomart metadata
 *.biomart
@@ -144,3 +153,4 @@ smoke_out_*/
 /validation/bulk_validation_overall.tsv
 /validation/bulk_validation_summary.tsv
 /cleanup_quick_test_results.sh
+.micromamba/
