@@ -62,8 +62,14 @@ def parse_args():
     parser.add_argument("--chain", required=True, help="Chain file (can be .gz)")
     parser.add_argument("--ref-2bit", required=True, help="Reference genome in .2bit")
     parser.add_argument("--query-2bit", required=True, help="Query genome in .2bit")
-    parser.add_argument("--gpu-max-batch", type=int, default=160, help="Max GPU batch size")
+    parser.add_argument("--gpu-max-batch", type=int, default=160, help="Max GPU batch size (by count)")
     parser.add_argument("--gpu-min-batch", type=int, default=32, help="Min GPU batch size before timeout")
+    parser.add_argument(
+        "--gpu-max-tokens", type=int, default=65536,
+        help="Token budget per GPU batch (count * padded_len). Caps memory for long "
+             "embed_once islands so a large --gpu-max-batch can't OOM the feed-forward. "
+             "0 disables (pure count-based). Lower it if you still OOM; raise for more throughput.",
+    )
     parser.add_argument("--cpu-max-workers", type=int, default=128, help="Max concurrent CPU workers for all pipeline steps")
     parser.add_argument("--gpu-logger", action="store_true", help="Enable GPU utilization logging every 3s")
     parser.add_argument("--output-dir", required=True, help="Output directory")
@@ -111,6 +117,7 @@ def start_gpu_executor(args):
     cfg = ExecutorConfig(
         max_batch=args.gpu_max_batch,
         min_batch=args.gpu_min_batch,
+        max_tokens=args.gpu_max_tokens,
         enable_logging=args.gpu_logger,
         model_name=args.model,
     )

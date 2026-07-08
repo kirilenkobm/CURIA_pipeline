@@ -39,6 +39,10 @@ from modules.model_registry import load_model, get_pca_path, get_finding_pca_pat
 class ExecutorConfig:
     max_batch: int = 256
     min_batch: int = 32
+    # Token budget per batch: cap count * padded_len so long (embed_once) islands form
+    # smaller batches automatically. Prevents OOM in the feed-forward activation when a
+    # fixed count batches long sequences. 0 disables (pure count-based). Always allows >=1.
+    max_tokens: int = 65536
     collect_timeout: float = 0.01
     max_wait: float = 0.2
     device: str = "auto"
@@ -101,17 +105,30 @@ def _parse_pca_role(flags, mean_pool: bool) -> str:
     return "find" if mean_pool else "match"
 
 
-def _collect_batch(input_queue, cfg: ExecutorConfig):
-    try:
-        job = input_queue.get(timeout=0.01)
-    except queue.Empty:
-        return [], False
+def _collect_batch(input_queue, cfg: ExecutorConfig, carry: list):
+    # carry holds at most one job pre-fetched from the queue that did not fit the token
+    # budget of the previous batch; it starts the next batch so no job is dropped.
+    if carry:
+        job = carry.pop()
+    else:
+        try:
+            job = input_queue.get(timeout=0.01)
+        except queue.Empty:
+            return [], False
 
     if job is None:
         return [], True
 
     jobs = [job]
     stop_after = False
+    max_len = len(job[2])  # job = (worker_id, sequence_id, sequence, flags)
+
+    def _fits(new_len, count):
+        # count * padded_len must stay within budget; the first job is always accepted
+        # (a single long sequence -> batch of 1), so a huge island never deadlocks.
+        if not cfg.max_tokens or cfg.max_tokens <= 0:
+            return True
+        return count * max(max_len, new_len) <= cfg.max_tokens
 
     while len(jobs) < cfg.max_batch:
         try:
@@ -123,7 +140,13 @@ def _collect_batch(input_queue, cfg: ExecutorConfig):
             stop_after = True
             break
 
+        new_len = len(job[2])
+        if not _fits(new_len, len(jobs) + 1):
+            carry.append(job)  # doesn't fit this batch; process it in the next one
+            break
+
         jobs.append(job)
+        max_len = max(max_len, new_len)
 
     return jobs, stop_after
 
@@ -172,9 +195,11 @@ def run_gpu_executor(input_queue, output_queue, cfg: ExecutorConfig | None = Non
     last_log_time = time.time()
     log_interval = 3.0
 
+    carry: list = []  # one-slot pushback for the token-budget batcher
+
     while True:
         ipc_start = time.time()
-        jobs, stop_after = _collect_batch(input_queue, cfg)
+        jobs, stop_after = _collect_batch(input_queue, cfg, carry)
         if not jobs and stop_after:
             break
         if not jobs:
