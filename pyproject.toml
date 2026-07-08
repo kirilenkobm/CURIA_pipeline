@@ -2,8 +2,7 @@
 name = "curia-pipeline"
 version = "0.1.0"
 description = "Cross-species Unified ncRNA Inference and Annotation"
-# Pinned to 3.12 so the prebuilt flash-attn wheels (cp312) match; see [cuda] extra below.
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.20",
     "scipy>=1.7",
@@ -13,23 +12,13 @@ dependencies = [
     "pandas>=1.3",
     "tqdm>=4.60",
     "pyrion>=0.3.1",
-    # torch 2.9: newest version with prebuilt flash-attn wheels (torch 2.10 has none yet).
-    # PyPI linux wheels are cu12 builds, which run fine on newer (e.g. CUDA 13) drivers.
-    "torch>=2.9,<2.10",
+    # torch>=2.1 for a solid torch.nn.functional.scaled_dot_product_attention (SDPA).
+    # RiNALMo attention uses SDPA -> memory-efficient/flash kernels on CUDA, O(L) memory,
+    # so NO flash_attn package or CUDA build is required (works on CPU/MPS/CUDA alike).
+    "torch>=2.1",
     "ptflops>=0.6",
     "ml_collections>=0.1.1",
     "gdown>=5.1.0",
     "transformers>=5.0",
     "multimolecule>=0.2.0",
-]
-
-[project.optional-dependencies]
-# GPU-only acceleration for RiNALMo. Required for full-genome runs on CUDA: RiNALMo
-# embeds long islands whole (embed_once), and without flash-attn standard attention is
-# O(L^2) memory and OOMs. Installed on Linux only; silently skipped on macOS.
-# Pinned to the cu12 / torch2.9 / cp312 wheel from the v2.8.3 release (only cxx11abiTRUE
-# is published for torch2.9, which matches PyPI torch 2.9). cu12 wheels run on newer
-# (CUDA 13) drivers via backward compatibility.
-cuda = [
-    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl ; sys_platform == 'linux' and python_version == '3.12'",
 ]

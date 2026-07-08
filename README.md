@@ -22,13 +22,21 @@ The quickest path is the bundled installer, which sets up the environment (via
 the default RiNALMo weights:
 
 ```bash
-git clone --recurse-submodules git@github.com:kirilenkobm/curia_pipeline.git
-cd curia_pipeline
+# HTTPS (no SSH key needed; simplest on a fresh machine):
+git clone --recurse-submodules https://github.com/kirilenkobm/CURIA_pipeline.git
+# SSH alternative (needs a key registered with GitHub):
+#   git clone --recurse-submodules git@github.com:kirilenkobm/CURIA_pipeline.git
+cd CURIA_pipeline
 ./install.sh                 # env + RiNALMo weights (~2.6 GB)
 # ./install.sh --with-rnafm  # also fetch RNA-FM weights (comparison only)
 # ./install.sh --no-weights  # environment only
 source .venv/bin/activate
 ```
+
+> **Submodules:** RiNALMo/RNA-FM are git submodules. Always clone with `--recurse-submodules`
+> (or run `git submodule update --init --recursive` after cloning). If a submodule's SSH URL
+> fails on a keyless box, force HTTPS with:
+> `git config --global url."https://github.com/".insteadOf "git@github.com:"`
 
 Or do it manually:
 
@@ -123,6 +131,9 @@ python modules/GPU_executor/benchmark_batch_size.py
 - CPU required for RNA TOGA and sequence processing
 - GPU optional but recommended for foundation-model embeddings
 - Tested on macOS (MPS) and Linux (CUDA)
+- Attention uses PyTorch's built-in `scaled_dot_product_attention` (memory-efficient / flash
+  kernels on CUDA, O(L) memory) — **no `flash-attn` package or extra CUDA build is required.**
+  A quick preflight embeds a test sequence and checks it's finite before the run; skip with `--skip-preflight`.
 
 ---
 
