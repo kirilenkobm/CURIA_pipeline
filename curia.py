@@ -31,6 +31,7 @@ from pyrion import read_chain_file
 
 from modules.GPU_executor.gpu_executor import ExecutorConfig, run_gpu_executor
 from modules.model_registry import get_logreg_path, get_island_scan_params, get_rna_toga_model_path
+from modules.utils.preflight import validate_model_artifacts, preflight_embedding_check
 from modules.utils.chrom_sizes import write_chrom_sizes_from_2bit
 from modules.utils.output_paths import OutputPaths
 from modules.converters.union_transcript import collapse_to_union_transcripts
@@ -75,6 +76,12 @@ def parse_args():
         "--no-cleanup",
         action="store_true",
         help="Skip automatic cleanup and reorganization of outputs (keep all intermediate files)",
+    )
+    parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="Skip the model-artifact + embedding sanity checks run before the pipeline "
+             "(the embedding self-test loads the foundation model once, ~30-60s).",
     )
     parser.add_argument(
         "--model",
@@ -287,6 +294,16 @@ def main():
         except ValidationError as e:
             print(f"\n# INPUT VALIDATION FAILED:\n{e}\n", file=sys.stderr)
             sys.exit(1)
+
+        # Preflight: model artifacts present + FM actually emits finite embeddings.
+        # Fails in seconds (not 30 min into a full run) on missing artifacts or NaN loads.
+        if not args.skip_preflight:
+            try:
+                validate_model_artifacts(args.model)
+                preflight_embedding_check(args.model)
+            except ValidationError as e:
+                print(f"\n# PREFLIGHT FAILED:\n{e}\n", file=sys.stderr)
+                sys.exit(1)
 
         print("# Starting GPU executor...")
         proc, input_q, output_q = start_gpu_executor(args)
