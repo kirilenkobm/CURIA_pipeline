@@ -120,13 +120,30 @@ def start_gpu_executor(args):
     return proc, input_q, output_q
 
 
-def shutdown_gpu_executor(proc, input_q):
+def shutdown_gpu_executor(proc, input_q, output_q=None):
+    # 1. best-effort graceful sentinel — never block on a jammed queue
     if input_q is not None:
-        input_q.put(None)
+        try:
+            input_q.put_nowait(None)
+        except Exception:
+            pass
+    # 2. escalate: graceful join -> SIGTERM -> SIGKILL (a CUDA-stuck child ignores SIGTERM)
     if proc is not None:
-        proc.join(timeout=10)
+        proc.join(timeout=5)
         if proc.is_alive():
             proc.terminate()
+            proc.join(timeout=5)
+        if proc.is_alive():
+            proc.kill()
+            proc.join(timeout=5)
+    # 3. stop mp.Queue feeder threads from blocking interpreter exit (the real "won't die" cause)
+    for q in (input_q, output_q):
+        if q is not None:
+            try:
+                q.cancel_join_thread()
+                q.close()
+            except Exception:
+                pass
 
 
 def run_toga_step(
@@ -272,14 +289,24 @@ def main():
     args = parse_args()
     proc = None
     input_q = None
+    output_q = None
 
-    # Set up signal handler for graceful shutdown
+    # Signal handler: idempotent + guaranteed exit. A second Ctrl-C dies immediately,
+    # and os._exit bypasses mp.Queue feeder threads that can otherwise trap the process.
+    _shutting_down = {"v": False}
+
     def signal_handler(signum, frame):
-        print("\n# Interrupted by user (Ctrl+C). Shutting down gracefully...")
-        shutdown_gpu_executor(proc, input_q)
-        sys.exit(1)
+        if _shutting_down["v"]:
+            os._exit(130)  # second Ctrl-C: don't wait for anything
+        _shutting_down["v"] = True
+        print("\n# Interrupted (Ctrl+C). Shutting down GPU executor...", flush=True)
+        try:
+            shutdown_gpu_executor(proc, input_q, output_q)
+        finally:
+            os._exit(130)  # guarantee exit even if a queue thread would hang
 
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     try:
         # Validate inputs before starting GPU executor (fail fast)
@@ -552,7 +579,7 @@ def main():
         minutes, seconds = divmod(remainder, 60)
         print(f"# Total pipeline wall time: {hours:02d}:{minutes:02d}:{seconds:02d} ({elapsed:.1f}s)")
         print("Shutting down GPU executor...")
-        shutdown_gpu_executor(proc, input_q)
+        shutdown_gpu_executor(proc, input_q, output_q)
 
 
 if __name__ == "__main__":
