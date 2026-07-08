@@ -82,8 +82,11 @@ temp/
 *.db
 *.pkl
 *.json
+# committed model artifacts (must survive the blanket *.json ignore above)
 !modules/rna_toga/model.json
 !modules/rna_toga/gbm_model.json
+!modules/logreg_signal_noise/logreg_noise_model.json
+!modules/logreg_signal_noise/logreg_noise_model_rinalmo.json
 *.log
 temp_*
 
