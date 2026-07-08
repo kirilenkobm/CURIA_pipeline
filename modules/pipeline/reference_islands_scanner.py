@@ -16,6 +16,7 @@ import json
 import sqlite3
 import threading
 import time
+import traceback
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
@@ -515,7 +516,9 @@ async def _worker(
                     completed_counter['last_log_time'] = current_time
 
         except Exception as exc:
-            print(f"# Error processing {job.transcript_id}: {exc}")
+            # Full traceback (not just the message) so per-transcript failures are diagnosable.
+            # These are skipped (the transcript is dropped from the output), not fatal.
+            print(f"# Error processing {job.transcript_id}: {exc}\n{traceback.format_exc()}")
 
 
 def run_reference_islands_scanner(
