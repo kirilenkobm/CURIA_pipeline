@@ -27,8 +27,9 @@ dependencies = [
 # GPU-only acceleration for RiNALMo. Required for full-genome runs on CUDA: RiNALMo
 # embeds long islands whole (embed_once), and without flash-attn standard attention is
 # O(L^2) memory and OOMs. Installed on Linux only; silently skipped on macOS.
-# Pinned to the cu12 / torch2.9 / cp312 wheel. If `import flash_attn` fails with an ABI
-# error, swap cxx11abiTRUE -> cxx11abiFALSE to match `torch._C._GLIBCXX_USE_CXX11_ABI`.
+# Pinned to the cu12 / torch2.9 / cp312 wheel from the v2.8.3 release (only cxx11abiTRUE
+# is published for torch2.9, which matches PyPI torch 2.9). cu12 wheels run on newer
+# (CUDA 13) drivers via backward compatibility.
 cuda = [
-    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3.post1/flash_attn-2.8.3+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl ; sys_platform == 'linux' and python_version == '3.12'",
+    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl ; sys_platform == 'linux' and python_version == '3.12'",
 ]
