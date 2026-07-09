@@ -99,7 +99,7 @@ sample_preprocessing_reference/
 quick_test/
 smoke_test_output/
 hg38_vs_mm39/
-!preprint_results/hg38_vs_mm39
+!preprint_results__deprecated/hg38_vs_mm39
 hg38_vs_mm39_*
 big_test/
 todo.txt
@@ -161,3 +161,8 @@ rinalmo_version_outputs/*
 .micromamba/
 
 preprint__deprecated/*
+# Deprecated RNA-FM-era results (superseded by rinalmo_version_outputs/)
+preprint_results__deprecated/
+
+# Large regenerable figure cache (Fig 3B cosine matrices; PDF is committed)
+analysis/data/fig3b_dotplot.npz
