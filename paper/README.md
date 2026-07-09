@@ -38,15 +38,15 @@ in `figures/`.
 | Fig | How it's made | File in `figures/` |
 |-----|---------------|--------------------|
 | 1 embeddings   | **scripted** (`fig1_embeddings`)         | `fig1_embeddings.pdf` |
-| 2 pipeline     | **scripted** schematic (`fig2_pipeline`) | `fig2_pipeline.pdf`   |
+| 2 pipeline     | hand-made schematic (PNG)                | `fig2_pipeline.png`   |
 | 3 islands      | **scripted** (`fig3_islands`): A schematic + B real SNHG12 SW-matrix | `fig3_islands.pdf` |
 | 4 MMD          | **scripted** (`fig4_mmd`)                | `fig4_mmd.pdf`        |
 | 5 case studies | UCSC screenshots, hand-arranged          | `fig5_cases.pdf`      |
 | 6 cores        | **scripted** (`fig6_cores`)              | `fig6_cores.pdf`      |
 
-Only Fig 5 (genome-browser screenshots) is hand-made; everything else is
-matplotlib. Figs 4/6 are wired to `--results-dir` and still stubbed pending the
-wider run.
+Figs 2 (pipeline schematic) and 5 (genome-browser screenshots) are hand-made
+assets; Figs 1/3/4/6 are matplotlib. Figs 4/6 are wired to `--results-dir` and
+still stubbed pending the wider run.
 
 Scripted figures are composed **entirely in matplotlib** — panel letters, sizing
 to the paper text width, embedded (editable) fonts — so no hand-composition step

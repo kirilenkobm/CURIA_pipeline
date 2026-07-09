@@ -33,20 +33,9 @@ FIGURES: dict[str, Callable] = {}
 
 # Hand-made assets this script intentionally does NOT generate.
 MANUAL = {
+    "fig2_pipeline":  "pipeline overview schematic (hand-made PNG)",
     "fig5_cases":     "UCSC genome-browser screenshots, hand-arranged",
 }
-
-# schematic palette (shared by Fig 2 and Fig 3A)
-_GREEN, _BLUE, _ISLAND, _GRAY, _SHADE = "#62c45a", "#3b5ba5", "#2e8b57", "#b6b6b6", "#eeeeee"
-
-
-def _exon_track(ax, y, blocks, color, h=4.0, lw=1.3):
-    """Draw an exon-block track: thin connecting line + filled boxes."""
-    from matplotlib.patches import Rectangle
-    xs = [b[0] for b in blocks]; xe = [b[0] + b[1] for b in blocks]
-    ax.plot([min(xs), max(xe)], [y + h / 2, y + h / 2], color=color, lw=lw, zorder=2)
-    for x, w in blocks:
-        ax.add_patch(Rectangle((x, y), w, h, color=color, zorder=3))
 
 
 def figure(name: str):
@@ -228,94 +217,6 @@ def fig1(outdir: Path, results_dir: Optional[Path]) -> None:
         fs.panel_label(axd["D"], "D")
     fs.save(fig, outdir / "fig1_embeddings.pdf")
     print(f"wrote {outdir/'fig1_embeddings.pdf'}")
-
-
-# =====================================================================
-# Figure 2 --- pipeline overview (fully scripted schematic, Fig 3A style)
-# =====================================================================
-def _fig2a(ax):
-    """Panel A: alignment chains restrict the search space."""
-    ax.set_xlim(0, 100); ax.set_ylim(40, 96); ax.set_axis_off()
-    # reference ncRNAs
-    _exon_track(ax, 86, [(20, 12), (38, 7), (49, 11)], _GREEN)
-    _exon_track(ax, 86, [(70, 17)], _GREEN)
-    ax.text(19, 88, "lncRNA-1", color=_GREEN, fontsize=8, fontweight="bold", ha="right", va="center")
-    ax.text(69, 88, "ncRNA-2", color=_GREEN, fontsize=8, fontweight="bold", ha="right", va="center")
-    ax.text(55, 78, "alignment chains", fontsize=8, ha="center")
-    # chains: chain-1 (syntenic, blue) covers both loci; chains 2-4 partial (gray)
-    _exon_track(ax, 68, [(16, 6), (24, 5), (32, 6), (40, 6), (49, 6), (57, 6),
-                         (66, 6), (74, 5), (81, 5), (88, 6)], _BLUE, lw=1.1)
-    _exon_track(ax, 60, [(19, 5), (41, 6), (60, 4), (67, 4)], _GRAY, lw=1.0)
-    _exon_track(ax, 52, [(20, 4), (27, 4), (39, 5), (46, 4)], _GRAY, lw=1.0)
-    _exon_track(ax, 52, [(73, 4), (81, 5)], _GRAY, lw=1.0)
-    ax.text(14, 70, "chain-1", color=_BLUE, fontsize=8, fontweight="bold", ha="right", va="center")
-    for y, lab in [(62, "chain-2"), (54, "chain-3")]:
-        ax.text(14, y, lab, color=_GRAY, fontsize=8, ha="right", va="center")
-    ax.text(70, 54, "chain-4", color=_GRAY, fontsize=8, ha="right", va="center")
-
-
-def _fig2b(ax):
-    """Panel B: long ncRNA --- islands detected and matched across species."""
-    from matplotlib.patches import Rectangle, ConnectionPatch
-    ax.set_xlim(0, 100); ax.set_ylim(-2, 100); ax.set_axis_off()
-    ax.text(55, 96, "long ncRNA pipeline", fontsize=8, fontweight="bold", ha="center")
-    _exon_track(ax, 80, [(25, 15), (46, 10), (60, 14)], _GREEN)
-    ax.text(24, 82, "lncRNA-1", color=_GREEN, fontsize=7.5, fontweight="bold", ha="right", va="center")
-    ref = [27, 58, 72]; qry = [27, 42, 58, 74]
-    for x in ref:
-        ax.add_patch(Rectangle((x, 60), 5, 5, color=_ISLAND))
-    for x in qry:
-        ax.add_patch(Rectangle((x, 18), 5, 5, color=_ISLAND))
-    _exon_track(ax, 6, [(24, 7), (34, 6), (44, 8), (56, 9), (70, 7)], _BLUE, lw=1.1)
-    ax.text(20, 62.5, "reference islands", fontsize=7.5, fontweight="bold", ha="right", va="center")
-    ax.text(20, 20.5, "query islands", fontsize=7.5, fontweight="bold", ha="right", va="center")
-    ax.text(20, 8.5, "chain-1", color=_BLUE, fontsize=7.5, fontweight="bold", ha="right", va="center")
-    # matches: two good (low distance), one rejected (high, dashed gray)
-    matches = [(27, 27, "0.02", "0.4", False), (72, 74, "0.03", "0.4", False),
-               (58, 58, "0.5", "0.75", True)]
-    for rx, qx, lab, col, rej in matches:
-        ax.add_artist(ConnectionPatch(
-            xyA=(rx + 2.5, 60), coordsA=ax.transData,
-            xyB=(qx + 2.5, 23), coordsB=ax.transData,
-            arrowstyle="-", color=col, lw=1.3,
-            linestyle="--" if rej else "-", connectionstyle="arc3,rad=0.12"))
-        ax.text((rx + qx) / 2 + (7 if not rej else -6), 41, lab, fontsize=7,
-                color=col, ha="center", va="center")
-
-
-def _fig2c(ax):
-    """Panel C: short ncRNA --- sliding-window MMD search in the projected region."""
-    from matplotlib.patches import Rectangle, FancyArrow
-    ax.set_xlim(0, 100); ax.set_ylim(-2, 100); ax.set_axis_off()
-    ax.text(52, 96, "short ncRNA pipeline", fontsize=8, fontweight="bold", ha="center")
-    _exon_track(ax, 80, [(28, 50)], _GREEN)
-    ax.text(26, 82, "ncRNA-2", color=_GREEN, fontsize=7.5, fontweight="bold", ha="right", va="center")
-    _exon_track(ax, 70, [(30, 10), (44, 12), (60, 12)], _BLUE, lw=1.1)
-    ax.text(26, 72, "chain-1", color=_BLUE, fontsize=7.5, fontweight="bold", ha="right", va="center")
-    ax.text(52, 58, "projected region", fontsize=8, ha="center")
-    ax.text(50, 44, "AUGUGACAACAGGUAGACAAUCUAUCGG...", fontsize=6.5, family="monospace",
-            ha="center", va="center")
-    # tiled sliding windows; the best one highlighted
-    for i, (x, a) in enumerate([(18, 0.25), (30, 0.25), (42, 0.7), (54, 0.25)]):
-        ax.add_patch(Rectangle((x, 38), 20, 12, color=_GREEN, alpha=a, linewidth=0, zorder=1))
-    ax.add_patch(FancyArrow(52, 34, 0, -10, width=0.4, head_width=3, head_length=3,
-                            color=_GREEN, length_includes_head=True))
-    ax.text(52, 16, "best match:\nlow MMD", fontsize=7.5, ha="center", va="center")
-
-
-@figure("fig2_pipeline")
-def fig2(outdir: Path, results_dir: Optional[Path]) -> None:
-    fs.set_style()
-    fig, axd = fs.mosaic("""
-        AAA
-        BBC
-    """, width=fs.FULL_WIDTH, height=4.6, gridspec_kw={"height_ratios": [1.0, 1.5]})
-    _fig2a(axd["A"]); _fig2b(axd["B"]); _fig2c(axd["C"])
-    fs.panel_label(axd["A"], "A", dx=-0.03, dy=1.04)
-    fs.panel_label(axd["B"], "B", dx=-0.04, dy=1.04)
-    fs.panel_label(axd["C"], "C", dx=-0.08, dy=1.04)
-    fs.save(fig, outdir / "fig2_pipeline.pdf")
-    print(f"wrote {outdir/'fig2_pipeline.pdf'}")
 
 
 # =====================================================================
