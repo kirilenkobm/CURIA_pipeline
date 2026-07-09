@@ -1,0 +1,3 @@
+# Figures live here as PDFs (vector preferred).
+# Programmatic figures: produced by ../analysis/make_figures.py
+# Hand figures (Affinity): export to PDF and name them fig1_overview.pdf, etc.

@@ -1,0 +1,67 @@
+\section{Methods}
+\label{sec:methods}
+
+% =====================================================================
+% NOTE FOR REWRITE:
+% This is the section that changes most, moving from RNA-FM to RiNALMo.
+% Key differences to reflect throughout:
+%   - Embedding model: RiNALMo giga-v1 (1280-dim, 650M params), default.
+%     RNA-FM retained only for comparison / deprecated.
+%   - RiNALMo embeddings are ~invariant to flanking context (=0 MMD drift),
+%     so islands are embedded ONCE and matched by Smith-Waterman on the
+%     per-token cosine dotplot -- no per-window re-embedding (unlike RNA-FM).
+%   - Two PCA projections: k=16 for matching (position-level), k=64 for
+%     island-finding; plus a logistic-regression signal/noise classifier.
+%     Artifacts live under modules/global_PCA and modules/logreg_signal_noise.
+% =====================================================================
+
+\subsection{Overview}
+\curia{} takes a reference annotation (BED12), reference metadata, a query and a
+reference genome (2bit), and whole-genome alignment chains, and produces ncRNA
+annotations in the query genome. Processing has three stages: (i)
+orthology-guided locus projection along chains, (ii) embedding of candidate loci
+with an RNA language model, and (iii) resolution of the annotation --- short
+ncRNA refinement by local matching, or long ncRNA analysis via islands.
+
+\subsection{Synteny-constrained locus projection}
+% TODO: describe chain-based projection and the RNA TOGA step.
+Reference loci are projected into the query genome using alignment chains,
+restricting the search to syntenic candidate regions
+\citep{kirilenko2023toga}.
+
+\subsection{RNA language-model embeddings}
+Candidate loci are embedded with \rinalmo{} (\texttt{giga-v1}; 1280-dimensional
+token embeddings) \citep{penic2024rinalmo}. Unlike \rnafm{}
+\citep{chen2022rnafm}, \rinalmo{} embeddings are essentially invariant to
+flanking sequence: moving the input boundaries leaves token embeddings almost
+unchanged (negligible MMD drift). This context stability is what allows the
+matching stage below to embed each region once.
+
+Two linear projections are fit on reference embeddings and stored as pipeline
+artifacts: a $k{=}16$ PCA for position-level matching and a $k{=}64$ PCA for
+island finding. A logistic-regression classifier separates conserved
+(``signal'') from background (``noise'') positions during island finding.
+
+\subsection{Short ncRNA refinement}
+% TODO
+Short ncRNAs ($\leq 160$\,bp) are refined by local matching of query and
+reference embeddings, reporting the best-scoring alignment per locus.
+
+\subsection{Long ncRNA islands}
+% TODO
+Long ncRNAs are represented by localized structured subregions (``islands'').
+Because embeddings are context-stable, each island is embedded once and aligned
+to the reference by Smith--Waterman on the per-token cosine similarity dotplot,
+yielding nucleotide-resolution matches without per-window re-embedding.
+
+\subsection{Implementation and parameters}
+Per-model parameters (PCA files, signal/noise classifier, scan and match
+thresholds, embedding strategy) are selected automatically by the \texttt{-{}-model}
+flag and are recorded in the model registry. Embeddings use PyTorch's
+memory-efficient scaled-dot-product attention; runs were executed on GPU
+(CUDA / MPS).
+
+\subsection{Evaluation}
+% TODO: describe the 10-mammal panel and metrics once the RunPod run completes.
+\curia{} was evaluated on several mammalian genome pairs, including
+human--mouse.

@@ -22,7 +22,7 @@ BED12_COLS = [
 # ---------------------------------------------------------------- file loading
 
 def resolve(base: Path, name: str) -> Path:
-    """Old preprint layout has files at top level; new layout nests them under
+    """Old preprint__deprecated layout has files at top level; new layout nests them under
     query_annotation/. Find the file in whichever place it lives."""
     for cand in (base / name, base / "query_annotation" / name):
         if cand.exists():

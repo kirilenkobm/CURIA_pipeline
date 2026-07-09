@@ -1,0 +1,43 @@
+\documentclass[11pt]{article}
+
+% --- layout ---
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{microtype}
+\usepackage{lmodern}
+
+% --- graphics & tables ---
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\usepackage{booktabs}
+
+% --- math ---
+\usepackage{amsmath,amssymb}
+
+% --- references ---
+\usepackage[round]{natbib}
+\usepackage[colorlinks=true,allcolors=blue]{hyperref}
+
+% --- convenience macros ---
+\newcommand{\curia}{CURIA}
+\newcommand{\rinalmo}{RiNALMo}
+\newcommand{\rnafm}{RNA-FM}
+\newcommand{\toga}{TOGA}
+
+\title{Cross-species ncRNA annotation using synteny-constrained embedding similarity}
+\author{Bogdan M. Kirilenko}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\input{sections/00_abstract}
+\input{sections/01_intro}
+\input{sections/02_methods}
+\input{sections/03_results}
+\input{sections/04_discussion}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}

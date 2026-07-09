@@ -159,3 +159,5 @@ rinalmo_version_outputs/*
 /validation/bulk_validation_summary.tsv
 /cleanup_quick_test_results.sh
 .micromamba/
+
+preprint__deprecated/*

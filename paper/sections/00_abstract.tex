@@ -1,0 +1,15 @@
+\begin{abstract}
+% TODO: rewrite once the 10-mammal RiNALMo run completes.
+Non-coding RNAs (ncRNAs) are poorly conserved at the sequence level, which makes
+cross-species annotation by homology unreliable. We present \curia{}
+(Cross-species Unified ncRNA Inference and Annotation), a pipeline that projects
+reference ncRNA loci into a query genome along whole-genome alignment chains and
+resolves annotation in the embedding space of an RNA language model rather than by
+raw sequence identity. \curia{} refines short ncRNAs by local matching in embedding
+space and analyses long ncRNAs through localized structured subregions
+(``islands''), restricting the genome-wide search to syntenic candidate loci.
+The current implementation uses \rinalmo{} embeddings, whose near-invariance to
+flanking context enables each island to be embedded once and aligned at
+nucleotide resolution. We evaluate \curia{} on several mammalian genome pairs.
+\emph{[Quantitative results to be inserted.]}
+\end{abstract}

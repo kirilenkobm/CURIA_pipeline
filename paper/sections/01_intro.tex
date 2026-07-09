@@ -1,0 +1,30 @@
+\section{Introduction}
+\label{sec:intro}
+
+% TODO: replace with the introduction text from the deprecated preprint,
+% lightly updated. Keep the framing (synteny + embeddings); only the model
+% (RNA-FM -> RiNALMo) and its consequences change here.
+
+Non-coding RNAs carry out diverse regulatory and structural roles, yet they
+evolve under weak sequence constraint, so orthologous ncRNAs are frequently
+undetectable by sequence-alignment search. Structure and syntenic position are
+often better preserved than primary sequence. \curia{} exploits both: it uses
+whole-genome alignment chains to constrain \emph{where} an orthologous ncRNA can
+be, and an RNA language model to decide \emph{whether} a candidate locus carries
+a conserved signal.
+
+This work builds on orthology inference at genomic scale
+\citep{kirilenko2023toga} and on RNA foundation models
+\citep{penic2024rinalmo,chen2022rnafm}. Earlier prototypes of \curia{} used
+\rnafm{}; the present version uses \rinalmo{}, motivated by its context stability
+(Section~\ref{sec:methods}).
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item A synteny-constrained pipeline that projects reference ncRNA loci into a
+        query genome and resolves them in embedding space.
+  \item An island-based representation for long ncRNAs that localizes conserved
+        structured subregions.
+  \item An embed-once, align-at-nucleotide-resolution matching procedure enabled
+        by \rinalmo{}'s near-invariance to flanking context.
+\end{itemize}
