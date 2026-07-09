@@ -1,28 +1,223 @@
 \section{Results}
 \label{sec:results}
 
-% =====================================================================
-% PLACEHOLDER: results are being regenerated from the 10-mammal RiNALMo
-% run (RunPod). Do not carry over RNA-FM numbers -- replace them.
-% Figures are produced by analysis/make_figures.py into paper/figures/*.pdf
-% Tables are produced by analysis/make_tables.py into paper/tables/*.tex
-% =====================================================================
+% #####################################################################
+% ####  DEPRECATED --- RNA-FM-era results. OVERWRITE after the      ####
+% ####  10-mammal RiNALMo panel completes.                          ####
+% ####                                                              ####
+% ####  All numbers below (counts, %, MMD values, AUCs) come from   ####
+% ####  the OLD RNA-FM run and must be regenerated. Kept verbatim   ####
+% ####  as a scaffold so the narrative structure is preserved.      ####
+% ####                                                              ####
+% ####  METRIC CHANGE: island-level "MMD" no longer applies --- the ####
+% ####  RiNALMo island matcher reports a cosine-Smith-Waterman      ####
+% ####  distance d = 1/(1+score) (Section 2.11). Short-ncRNA MMD    ####
+% ####  still applies. Reframe island subsections accordingly when  ####
+% ####  inserting new numbers (Fig 6 heatmaps: MMD -> cosine dist). ####
+% #####################################################################
 
-\subsection{Context stability of \rinalmo{} vs \rnafm{}}
-% TODO: MMD-drift comparison motivating the embed-once design.
+\subsection{Benchmark setup}
+\curia{} was evaluated on a panel of mammalian genomes, using human (hg38) as the
+reference and multiple genomes as queries (rhesus macaque (rheMac10), mouse
+(mm39), rat (rn7), cow (bosTau9), pig (susScr11), horse (equCab3), cat (felCat9),
+hedgehog (eriEur2), armadillo (dasNov3), and opossum (monDom5)). Genome assemblies
+were obtained from NCBI \citep{sayersDatabaseResourcesNational2022} and the UCSC
+Genome Browser \citep{kentHumanGenomeBrowser2002}. Due to variability in
+annotation quality across species, high-quality ncRNA annotations were used only
+for human (GENCODE V48) and mouse (GENCODE VM37)
+\citep{harrowGENCODEReferenceHuman2012}, while other species were analyzed without
+relying on their native annotations. Human and mouse contain on the order of
+${\sim}20{,}000$ annotated ncRNA transcripts, spanning both well-supported
+elements (e.g., tRNAs, rRNAs, selected snoRNAs) and less-characterized transcripts,
+particularly among lncRNAs. Evaluation was performed at both the locus level (for
+short ncRNAs and lncRNA loci) and the substructure level (for island matches),
+following the criteria defined in Section~\ref{sec:eval}.
 
-\subsection{Short ncRNA recovery}
-% TODO
+\subsection{Overall performance}
+% TODO(rinalmo): regenerate all counts/percentages from the 10-mammal run.
+We first evaluated agreement between predicted loci and existing annotations.
+Among 2{,}805 predicted short ncRNA loci, 53.1\% overlap annotated exons, with
+47.7\% covering $\geq 50\%$ of the annotated transcript and 35.5\% showing
+near-complete overlap ($\geq 99\%$). Among overlapping predictions, the median
+overlap is 100\% (mean 88.8\%), indicating that matched loci are typically well
+localized and consistent with annotated boundaries.
 
-\subsection{Long ncRNA islands and conservation}
-% TODO
+These results suggest that matched loci are generally well localized when
+annotation support is present. The substantial fraction of predictions without
+annotation overlap is consistent with a combination of annotation incompleteness,
+projection errors, and potential false positives. Notably, many non-overlapping
+predictions retain strong syntenic support, suggesting that some may correspond to
+unannotated or weakly annotated ncRNA loci.
 
-% Example figure/table wiring (uncomment once assets exist):
-% \begin{figure}[t]
-%   \centering
-%   \includegraphics[width=\linewidth]{fig1_overview.pdf}
-%   \caption{Pipeline overview.}
-%   \label{fig:overview}
-% \end{figure}
-%
-% \input{tables/table1_benchmark}
+\subsection{Short ncRNA performance and score behavior}
+% TODO(rinalmo): short-ncRNA matching still uses MMD, but with RiNALMo
+% embeddings the distribution and thresholds will differ. Regenerate Fig 4.
+We evaluated similarity between matched short ncRNA loci using MMD in embedding
+space. Across all predictions, the MMD distribution is skewed toward low values
+(median 0.108; Fig.~\ref{fig:mmd}A), with a substantial fraction of near-zero
+values, indicating consistent embedding representations between matched reference
+and query loci.
+
+Stratification by biotype reveals clear differences (Fig.~\ref{fig:mmd}C).
+snoRNAs and miRNAs exhibit the lowest MMD values, consistent with their compact
+size and well-characterized structural constraints. In contrast, snRNAs and
+misc\_RNAs show higher and broader MMD distributions, likely reflecting increased
+ambiguity due to copy number, sequence divergence, and genomic context. tRNAs
+serve as a positive control, with consistently low MMD values in line with their
+well-characterized structural conservation \citep{chanTRNAscanSE20Improved2021}.
+
+MMD is strongly associated with annotation agreement. Predictions with low MMD
+values ($\lesssim 0.1$) show high overlap with annotated loci (${\sim}90\%$),
+whereas higher MMD values show reduced overlap and increased dispersion.
+Predictions with MMD $> 0.2$ rarely overlap annotations and are enriched for
+ambiguous cases. Consistent with this, loci overlapping annotations are enriched
+at low MMD values, while non-overlapping predictions are shifted toward higher
+values (Fig.~\ref{fig:mmd}B), supporting the interpretation of MMD as a continuous
+empirical measure of correspondence confidence.
+
+Notably, a subset of high-confidence predictions (MMD $\approx 0$) does not
+overlap existing annotations despite strong syntenic support, suggesting that
+annotation incompleteness contributes to the observed gap.
+
+To assess whether embedding-based similarity merely recapitulates sequence
+conservation, we compared MMD to pairwise sequence identity for matched short
+ncRNA loci. The two measures were strongly anticorrelated (Pearson $r = -0.797$;
+Spearman $\rho = -0.846$; $n = 2{,}697$). However, this relationship is not
+deterministic: at intermediate sequence identity ($\approx 45$--$60\%$), MMD
+values span a broad range, indicating that embedding representations capture
+additional structure beyond raw sequence identity in this regime.
+
+\begin{figure}[t]
+  \centering
+  % TODO(fig4): regenerate with RiNALMo. Short-ncRNA metric is still MMD, but
+  % values/distributions shift; the seq-identity-vs-MMD panel will differ.
+  \includegraphics[width=\linewidth]{fig4_mmd.png}
+  \caption{Behavior of embedding-based similarity across short ncRNA loci.
+  \textbf{(A)} Sequence identity versus similarity score for matched loci.
+  \textbf{(B)} Annotation agreement as a function of the score. \textbf{(C)}
+  Distribution of scores across ncRNA biotypes. \emph{[TODO: regenerate with
+  RiNALMo; short-ncRNA score is MMD.]}}
+  \label{fig:mmd}
+\end{figure}
+
+\subsection{Structural conservation analysis (``islands'')}
+% TODO(rinalmo): island metric is now cosine-SW distance, NOT MMD. Rewrite
+% "low-MMD" as "low cosine distance / high SW score" and regenerate Fig 6.
+We analyzed localized subregions (``islands'') within lncRNAs to assess
+cross-species correspondence beyond the locus level. Island detection reveals that
+embedding-supported signal is sparse and localized. Most lncRNAs contain a small
+number of discrete islands rather than uniform signal across the full transcript
+(Fig.~\ref{fig:cores}A), indicating that the strongest cross-species signal is
+concentrated in compact subregions. Across loci, islands were detected in
+approximately 74\% of lncRNAs, with a median of 2 islands per transcript.
+
+To assess cross-species correspondence, we evaluated matches between reference and
+query islands. At the gene level, 83.9\% of lncRNAs exhibit at least one
+cross-species match, indicating that detectable correspondence is widespread but
+rarely spans entire transcripts. Only 22\% of matched islands overlap annotated
+ncRNA regions in the query genome, and 17\% show $\geq 50\%$ exonic overlap,
+suggesting that many candidate elements are not captured by current annotation
+resources.
+
+Together, these observations support a modular pattern of cross-species
+correspondence, with signal concentrated in discrete localized regions rather than
+uniformly distributed across entire transcripts
+\citep{hezroniPrinciplesLongNoncoding2015,rivasEvolutionaryConservationRNA2021,ulitskyEvolutionRescueUsing2016,mattickLongNoncodingRNAs2023,quinnUniqueFeaturesLong2016}.
+This interpretation is broadly consistent with observations from well-characterized
+lncRNAs such as NEAT1, XIST, and MALAT1, in which localized domains have been
+linked to distinct architectural, spreading, or stability-related functions
+\citep{wiluszTripleHelixStabilizes2012,yamazakiFunctionalDomainsNEAT12018,engreitzXistLncRNAExploits2013}.
+
+\subsubsection{Multi-species conserved cores}
+Here, ``conserved cores'' refers operationally to islands showing recurrent
+high-confidence matches across multiple species within syntenically projected
+loci. We observe a subset of islands that exhibit reproducible cross-species
+matches (Fig.~\ref{fig:cores}B--C), with increasing divergence at greater
+phylogenetic distance. Across all detected cores, 83\% are recovered in at least
+two species, 49\% in five or more species, and approximately 1\% are consistently
+detected across all ten species, including the marsupial outgroup (opossum).
+
+In contrast to locus-level overlap, which is often incomplete or ambiguous, these
+cores exhibit stable cross-species correspondence at the level of localized
+embedding similarity. To assess whether such matches could arise by chance, we
+compared results to a randomized baseline in which query islands were replaced
+with randomly sampled regions within the same syntenic intervals. Under this null
+model, consistent high-confidence matches were rare, indicating that recurrent
+cores are unlikely to arise from random similarity within syntenic regions.
+
+\subsection{Candidate conserved regions absent from current annotations}
+% TODO(rinalmo): regenerate the ~700 count and the conserved-cores file.
+After excluding regions overlapping or proximal to protein-coding genes, we
+identify approximately 700 candidate conserved intergenic lncRNA loci exhibiting
+consistent embedding-space similarity across $\geq 9$ species. The full set of
+loci is available in the repository
+(\nolinkurl{preprint_results/lncRNAs_with_conserved_cores.txt}). These loci
+represent candidate elements and may include false positives despite filtering.
+The persistence of these loci after filtering suggests that the observed signal is
+unlikely to be primarily driven by coding-associated conservation, although
+residual confounding cannot be excluded.
+
+\subsection{Case studies}
+% TODO(rinalmo): re-run these loci and update MMD values (SNORD57 MMD=0.0,
+% RNU6-7 MMD=0.0, vault RNA MMD=0.059 were RNA-FM values).
+To illustrate the behavior of \curia{}, we examined individual loci
+(Fig.~\ref{fig:cases}). Projection of human SNORD57 to mouse identifies a nearly
+exact match overlapping annotated Snord57, demonstrating precise localization
+under strong structural conservation. Projection of human RNU6-7 intersects an
+annotated mouse locus (Gm24859), indicating recovery of a corresponding genomic
+region despite ambiguous or incomplete annotation. Projection of human vault RNA
+(ENSG00000199990) identifies a corresponding locus overlapping mouse Vaultrc5; the
+matched region differs in length from the human transcript, yet \curia{} localizes
+the most similar segment within the syntenic region.
+
+\begin{figure}[t]
+  \centering
+  % TODO(fig5): re-run these loci with RiNALMo and update MMD values in text
+  % (SNORD57 0.0, RNU6-7 0.0, vault 0.059 were RNA-FM). Browser layout is fine.
+  \includegraphics[width=\linewidth]{fig5_cases.png}
+  \caption{Recovery of short ncRNA loci across species using \curia{}. Genome
+  browser snapshots (UCSC) illustrating representative examples of short ncRNA
+  projection from human (hg38) to mouse (mm39): SNORD57 (exact match), RNU6-7
+  (recovery under incomplete annotation), and vault RNA (length divergence,
+  partial correspondence). \emph{[TODO: regenerate with RiNALMo.]}}
+  \label{fig:cases}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  % TODO(fig6): REDRAW from RiNALMo results. Heatmap color scale becomes
+  % cosine-SW distance (d=1/(1+score)), not MMD; matrices will differ.
+  \includegraphics[width=\linewidth]{fig6_cores.png}
+  \caption{Modular and heterogeneous cross-species correspondence of lncRNA cores.
+  \textbf{(A)} Cross-species matching of core regions for representative lncRNAs
+  (NORAD, PVT1, FIRRE); rows are species, columns are reference cores ordered along
+  the transcript, color indicates match distance. \textbf{(B)} Distribution of
+  core reproducibility across species. \textbf{(C)} Median island-level match
+  distance across species, increasing with phylogenetic distance. \emph{[TODO:
+  color scale is now cosine-SW distance, not MMD.]}}
+  \label{fig:cores}
+\end{figure}
+
+\subsection{Error analysis}
+The dominant failure modes arise from limitations in projection, annotation, and
+signal strength. Chain-based projection defines the search space and acts as a
+hard constraint: if the corresponding region is not captured by genome alignments,
+it cannot be recovered. Incomplete and imprecise reference annotations further
+limit recoverable signal, particularly for lncRNAs. A substantial fraction of loci
+exhibit weak or diffuse embedding signal, producing no detectable islands or only
+fragmented matches. Overall, most observed failures are associated with missing or
+ambiguous signal and projection constraints, rather than instability of the
+downstream matching procedure.
+
+\subsection{Runtime and scalability}
+% TODO(rinalmo): re-time on the RiNALMo pipeline; the embed-once island matcher
+% removes per-window re-embedding and should change the runtime profile.
+We evaluated \curia{} on a representative genome pair (hg38 vs mm39). Using an AMD
+EPYC 9575F CPU and an NVIDIA RTX PRO 6000 GPU, the full pipeline completes in
+${\sim}30$ minutes when restricted to primary isoforms, and remains within
+${\sim}1$ hour for a more comprehensive transcript set. Embedding inference is
+performed on GPU with batched execution (up to 4096 sequences per batch), while
+downstream matching and alignment are CPU-bound. Runtime scales approximately
+linearly with annotation size, and both reference and query island detection are
+restricted to syntenically projected regions, substantially reducing the effective
+search space.

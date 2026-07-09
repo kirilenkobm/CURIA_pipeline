@@ -15,7 +15,7 @@ ANALYSIS:= ../analysis
 
 pdf: $(MAIN).pdf
 
-$(MAIN).pdf: $(MAIN).tex refs.bib sections/*.tex tables/*.tex
+$(MAIN).pdf: $(MAIN).tex CURIA_Preprint.bib sections/*.tex tables/*.tex
 	latexmk -pdf -interaction=nonstopmode -halt-on-error $(MAIN).tex
 
 all: assets pdf

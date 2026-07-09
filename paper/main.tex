@@ -13,9 +13,10 @@
 % --- math ---
 \usepackage{amsmath,amssymb}
 
-% --- references ---
-\usepackage[round]{natbib}
-\usepackage[colorlinks=true,allcolors=blue]{hyperref}
+% --- references (numeric, arXiv-style; [1-3,6] range compression) ---
+\usepackage[numbers,sort&compress]{natbib}
+% Clickable but ink-black links (no blue) --- standard for preprints.
+\usepackage[colorlinks=true,allcolors=black]{hyperref}
 
 % --- convenience macros ---
 \newcommand{\curia}{CURIA}
@@ -24,7 +25,7 @@
 \newcommand{\toga}{TOGA}
 
 \title{Cross-species ncRNA annotation using synteny-constrained embedding similarity}
-\author{Bogdan M. Kirilenko}
+\author{Bogdan M. Kirilenko\\\small Independent Researcher}
 \date{\today}
 
 \begin{document}
@@ -36,8 +37,9 @@
 \input{sections/02_methods}
 \input{sections/03_results}
 \input{sections/04_discussion}
+\input{sections/05_availability}
 
-\bibliographystyle{plainnat}
-\bibliography{refs}
+\bibliographystyle{unsrtnatetal}  % unsrtnat + author truncation (see paper/README)
+\bibliography{CURIA_Preprint}
 
 \end{document}

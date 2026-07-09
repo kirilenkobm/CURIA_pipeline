@@ -1,30 +1,158 @@
 \section{Introduction}
 \label{sec:intro}
 
-% TODO: replace with the introduction text from the deprecated preprint,
-% lightly updated. Keep the framing (synteny + embeddings); only the model
-% (RNA-FM -> RiNALMo) and its consequences change here.
+\subsection{Protein-coding orthology as a tractable problem}
+Orthology inference for protein-coding genes is well established and supported by
+scalable annotation transfer pipelines
+\citep{kirilenkoIntegratingGeneAnnotation2023,sharmaIncreasedAlignmentSensitivity2017,kentEvolutionsCauldronDuplication2003,sharmaCESAR20Substantially2017,herreroEnsemblComparativeGenomics2016,fitchDistinguishingHomologousAnalogous1970,kooninOrthologsParalogsEvolutionary2005}.
+Strong sequence conservation, together with constraints imposed by open reading
+frames, enables reliable cross-species mapping of gene loci
+\citep{sharmaIncreasedAlignmentSensitivity2017,sharmaCESAR20Substantially2017}.
+Methods such as TOGA, which combine genome alignment chains with coding sequence
+structure, achieve high accuracy at genome scale. However, these approaches rely
+on properties specific to protein-coding genes and do not generalize to
+non-coding RNAs. In particular, they assume conserved coding structure and
+detectable sequence similarity, which are often absent outside protein-coding
+contexts.
 
-Non-coding RNAs carry out diverse regulatory and structural roles, yet they
-evolve under weak sequence constraint, so orthologous ncRNAs are frequently
-undetectable by sequence-alignment search. Structure and syntenic position are
-often better preserved than primary sequence. \curia{} exploits both: it uses
-whole-genome alignment chains to constrain \emph{where} an orthologous ncRNA can
-be, and an RNA language model to decide \emph{whether} a candidate locus carries
-a conserved signal.
+In this work, we do not attempt to infer evolutionary orthology. Instead, we
+focus on identifying candidate cross-species correspondences supported by genomic
+synteny and consistency in embedding space. This formulation is best viewed as
+synteny-constrained annotation transfer, where predicted loci represent candidate
+corresponding elements rather than definitive orthologs.
 
-This work builds on orthology inference at genomic scale
-\citep{kirilenko2023toga} and on RNA foundation models
-\citep{penic2024rinalmo,chen2022rnafm}. Earlier prototypes of \curia{} used
-\rnafm{}; the present version uses \rinalmo{}, motivated by its context stability
-(Section~\ref{sec:methods}).
+\subsection{The ncRNA orthology challenge}
+Establishing cross-species correspondence for ncRNAs remains substantially more
+difficult. Sequence conservation is often weak or absent across evolutionary
+distances
+\citep{ulitskyLincRNAsGenomicsEvolution2013,diederichsFourDimensionsNoncoding2014,hezroniPrinciplesLongNoncoding2015,rivasEvolutionaryConservationRNA2021,ulitskyEvolutionRescueUsing2016,statelloGeneRegulationLong2021},
+and transcript boundaries are frequently ambiguous, making it unclear what
+constitutes a conserved unit
+\citep{ulitskyLincRNAsGenomicsEvolution2013,diederichsFourDimensionsNoncoding2014,hezroniPrinciplesLongNoncoding2015,mattickLongNoncodingRNAs2023}.
+Functional constraints are not reliably captured by primary sequence alone,
+limiting the applicability of sequence-based approaches
+\citep{rivasEvolutionaryConservationRNA2021}. In addition, ncRNA annotations are
+incomplete and heterogeneous across species
+\citep{mattickLongNoncodingRNAs2023,perteaCHESSNewHuman2018}, complicating both
+evaluation and transfer. Finally, embedding representations of short ncRNAs can be
+context-dependent \citep{chenInterpretableRNAFoundation2022}, making direct
+comparison sensitive to boundary definition.
 
-\paragraph{Contributions.}
-\begin{itemize}
-  \item A synteny-constrained pipeline that projects reference ncRNA loci into a
-        query genome and resolves them in embedding space.
-  \item An island-based representation for long ncRNAs that localizes conserved
-        structured subregions.
-  \item An embed-once, align-at-nucleotide-resolution matching procedure enabled
-        by \rinalmo{}'s near-invariance to flanking context.
-\end{itemize}
+For example, two ncRNA loci may exhibit low primary sequence similarity while
+preserving a similar structural pattern:
+\begin{verbatim}
+GAGGUAUCCAAGAUACCUC
+(((((((.....)))))))
+AUGCUACGAUCGGUAGCAU
+(((((((.....)))))))
+\end{verbatim}
+In such cases, sequence-based comparison may fail to establish correspondence,
+whereas embedding-based representations may capture similarities associated with
+shared structural patterns.
+
+\subsection{Limitations of existing approaches}
+Existing approaches address complementary aspects of ncRNA detection and
+comparison but do not provide a scalable framework for genome-wide ncRNA
+correspondence analysis. Covariance models (e.g., Infernal
+\citep{nawrockiInfernal11100fold2013}/Rfam \citep{ontiveros-palaciosRfam15RNA2025})
+offer high specificity but rely on curated families and do not generalize to
+genome-wide discovery. Structure-based alignment methods such as LocARNA
+\citep{willLocARNA20Versatile2024} and RNAforester
+\citep{hochsmannLocalSimilarityRNA2003} capture structural similarity but are
+computationally expensive and not suitable for large-scale analysis. Genome-wide
+methods such as RNAz \citep{gruberRNAz20Improved2010}, EvoFold
+\citep{pedersenIdentificationClassificationConserved2006}, and FEELnc
+\citep{wucherFEELncToolLong2017} identify candidate RNA elements or lncRNA loci,
+but focus on detection or annotation rather than establishing cross-species
+correspondence. Comparative genome alignments define candidate homologous
+intervals but do not provide an RNA-specific measure of similarity or a principled
+way to localize relevant signal
+\citep{zoonomiaconsortiumComparativeGenomicsMultitool2020,armstrongProgressiveCactusMultiplegenome2020}.
+As a result, existing approaches either lack scalability, require strong prior
+knowledge, or do not establish explicit correspondence between loci at genome
+scale. Together, these limitations motivate a formulation that (i) restricts the
+search space via synteny and (ii) defines similarity in a representation space not
+tied to primary sequence.
+
+\subsection{Synteny-constrained embedding matching}
+A key missing component is the integration of synteny with embedding-based
+similarity. Genome alignment chains define a constrained search space of candidate
+loci, reducing the combinatorial complexity of cross-species comparison
+\citep{zoonomiaconsortiumComparativeGenomicsMultitool2020,armstrongProgressiveCactusMultiplegenome2020}.
+At the same time, RNA foundation models such as RNA-FM
+\citep{chenInterpretableRNAFoundation2022}, RiNALMo
+\citep{penicRiNALMoGeneralpurposeRNA2025}, and related embedding approaches such as
+RNABERT \citep{akiyamaInformativeRNABase2022} provide learned representations
+associated with RNA family identity, structure-related signal, and downstream
+predictive tasks \citep{vahabAdvancingNoncodingRNA2025}. Without synteny
+constraints, embedding-based matching would require genome-wide comparison over a
+vastly larger search space, making the problem computationally expensive and
+increasing the risk of false positives. Combining these sources of information
+enables tractable comparison of ncRNA loci in settings where primary-sequence
+conservation is limited.
+
+% TODO(fig1): Figure 1 must be regenerated with RiNALMo embeddings. Panels A/B
+% (per-nucleotide and mean-pooled embedding scatter) are qualitatively the same
+% story. Panel C INVERTS: with RNA-FM, similarity degraded under boundary shift
+% (context-dependence); with RiNALMo, embeddings are ~invariant to flanking
+% context (near-zero drift), and that stability is what motivates embed-once
+% island alignment. Reframe the C caption accordingly once the new panel exists.
+\begin{figure}[t]
+  \centering
+  % TODO(fig1): placeholder is the OLD RNA-FM figure. Regenerate A/B with
+  % RiNALMo (qualitatively the same). Panel C is the RNA-FM boundary-drift
+  % panel --- OMIT it (RiNALMo is context-stable) or replace with a stability
+  % panel; then renumber D->C in the caption.
+  \includegraphics[width=\linewidth]{fig1_embeddings.png}
+  \caption{Embedding representations reflect structure-related similarity of
+  ncRNAs and support local matching. \textbf{(A)} Per-nucleotide embeddings
+  (PCA) for two tRNA copies (blue) and one miRNA (orange); each point is a
+  nucleotide. tRNA embeddings cluster together, while the miRNA forms a distinct
+  cluster. \textbf{(B)} Mean-pooled embeddings for annotated ncRNAs (purple) and
+  background sequences (gray; intergenic and dinucleotide-shuffled); each point
+  is one sequence. RNA-derived sequences separate from genomic background.
+  \textbf{(C)} \emph{[RNA-FM only --- boundary-shift drift; omit for RiNALMo.]}
+  \textbf{(D)} Best-hit similarity compared to a non-overlapping control region
+  within the same locus, showing best-supported matches are more similar than
+  nearby alternatives.}
+  \label{fig:embeddings}
+\end{figure}
+
+\subsection{Method overview}
+We formulate cross-species ncRNA correspondence as matching of
+embedding-supported regions constrained by genome alignment chains. Candidate loci
+are first identified using a TOGA-inspired projection that leverages syntenic
+consistency and coverage of neutrally evolving sequence (e.g., intronic and
+flanking regions), which remains more reliably alignable across species
+\citep{kirilenkoIntegratingGeneAnnotation2023,sharmaIncreasedAlignmentSensitivity2017}.
+
+Within these candidate regions, \curia{} evaluates similarity in embedding space
+rather than relying on primary-sequence alignment. The pipeline treats short and
+long ncRNAs with complementary similarity measures. For short ncRNAs, each region
+is represented as a set of per-position embedding vectors and similarity is
+quantified using Maximum Mean Discrepancy (MMD)
+\citep{grettonKernelTwoSampleTest2012}, a distribution-level measure over
+embeddings; low MMD indicates similar embedding distributions. For long ncRNAs,
+we exploit the context stability of RiNALMo embeddings: each localized subregion
+is embedded once and matched at nucleotide resolution by Smith--Waterman
+alignment \citep{smithIdentificationCommonMolecular1981} over the per-token cosine
+similarity dotplot, avoiding the per-window re-embedding required by
+context-dependent models. Both formulations avoid explicit primary-sequence
+alignment and provide continuous scores for ranking candidate matches, making
+them suitable for ncRNAs where primary-sequence conservation is weak.
+
+\subsection{Contributions}
+In this work, we:
+\begin{enumerate}
+  \item Reformulate cross-species ncRNA correspondence as synteny-constrained
+        matching in embedding space.
+  \item Introduce \curia{}, a pipeline combining chain-based locus projection with
+        embedding-based detection and comparison of localized signal.
+  \item Propose an island-based representation for long ncRNAs to localize
+        cross-species signal.
+  \item Develop a boundary refinement strategy for short ncRNAs.
+  \item Demonstrate a genome-scale proof of concept across multiple mammalian
+        genomes, showing that this approach can recover cross-species ncRNA
+        correspondence in cases where primary-sequence similarity alone is
+        limited.
+\end{enumerate}

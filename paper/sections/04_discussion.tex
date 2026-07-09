@@ -1,23 +1,149 @@
 \section{Discussion}
 \label{sec:discussion}
 
-% TODO: adapt from the deprecated preprint. Keep general claims; update any
-% statement that depended on RNA-FM's context sensitivity, since RiNALMo
-% removes the per-window re-embedding motivation.
+\curia{} should be viewed primarily as a proof of concept demonstrating that
+synteny-constrained embedding comparison yields interpretable cross-species signal
+for ncRNA correspondence at genome scale, rather than as a finished annotation
+framework optimized for exhaustive sensitivity or production use. Within this
+framing, several key observations emerge.
 
-\curia{} resolves ncRNA orthology in embedding space rather than by raw sequence
-identity, constrained to syntenic loci. Moving from \rnafm{} to \rinalmo{}
-removes the per-window re-embedding that \rnafm{}'s context sensitivity forced,
-making island alignment both faster and more accurate on true matches.
+\subsection{Key findings}
+We show that cross-species ncRNA correspondence can be recovered at genome scale
+using a combination of syntenic constraints and embedding-based similarity. This
+enables identification of candidate corresponding loci even in the absence of
+strong sequence conservation. For short ncRNAs, correspondence is typically well
+localized when supported by annotation, and embedding-based similarity provides a
+consistent empirical measure of match confidence. For long ncRNAs, correspondence
+is frequently partial and localized, with signal concentrated in discrete
+subregions rather than spanning full transcripts. Together, these results support
+a model in which cross-species ncRNA correspondence is heterogeneous and modular,
+and can be captured using localized comparison in embedding space.
 
-\paragraph{Limitations.}
-% TODO
+\subsection{Comparison to existing methods}
+Existing approaches provide complementary capabilities for ncRNA detection and
+structural comparison but do not directly address genome-scale correspondence.
+Covariance models and structure alignment methods offer high specificity but rely
+on curated families or are computationally expensive, limiting their scalability.
+Genome-wide scanning approaches identify candidate RNA elements but do not
+establish explicit cross-species correspondence. In contrast, \curia{} combines
+syntenic constraints with embedding-based similarity to enable tractable
+genome-scale analysis of ncRNA correspondence without requiring curated families
+or explicit structural alignment.
 
-\paragraph{Availability.}
-\curia{} is available at \url{https://github.com/kirilenkobm/CURIA_pipeline}.
+\subsection{Biological implications}
+Our results indicate that cross-species ncRNA correspondence is often heterogeneous
+and localized rather than transcript-wide. For long ncRNAs, correspondence
+frequently concentrates in compact subregions, while the surrounding transcript
+context shows weak or no detectable similarity. Embedding-based similarity is
+strongly associated with sequence identity for short ncRNAs, but this relationship
+is not uniform: at intermediate sequence identity ($\approx 50$--$60\%$),
+substantial variability is observed, indicating that loci with comparable sequence
+similarity can exhibit markedly different embedding-based similarity.
 
-\section*{Acknowledgements}
-% TODO
+The island-based representation provides a practical way to capture this behavior:
+recurrent high-confidence islands define candidate conserved cores, while
+intervening regions appear less constrained. Correspondence patterns also vary
+across RNA classes: compact RNAs such as tRNAs and snoRNAs show strong and
+consistent signal, whereas long ncRNAs more often exhibit partial or fragmented
+correspondence
+\citep{hezroniPrinciplesLongNoncoding2015,ulitskyEvolutionRescueUsing2016,mattickLongNoncodingRNAs2023}.
+Together, these observations support a model in which candidate conserved elements
+are embedded within broader, weakly constrained transcript contexts, emphasizing
+the importance of localized comparison in cross-species ncRNA analysis.
 
-\section*{Author contributions}
-% TODO
+\subsection{Limitations}
+This study has several limitations related to data availability, modeling
+assumptions, and evaluation. First, the lack of reliable ground truth for
+cross-species ncRNA correspondence remains a major challenge; existing annotations
+are incomplete and heterogeneous across species, and transcript boundaries---
+particularly for lncRNAs---are often ambiguous. As a result, evaluation based on
+annotation overlap provides only an approximate and conservative estimate of
+performance.
+
+Second, \curia{} depends on the availability and quality of genome alignment
+chains. While chains effectively constrain the search space, errors or
+fragmentation in alignments can affect downstream predictions. In addition, the
+candidate-region classification step is adapted from protein-coding gene
+projection and may not fully capture the diversity of ncRNA correspondence
+patterns.
+
+Third, the method relies on embedding representations derived from RNA foundation
+models. Although RiNALMo \citep{penicRiNALMoGeneralpurposeRNA2025} provides a
+practical and context-stable representation, it may not capture all relevant
+structural features. In particular, \curia{} is primarily sensitive to localized
+signal in embedding space and does not model long-range interactions or global RNA
+architecture.
+
+Fourth, \curia{} does not establish transcriptional activity or molecular
+function; predicted regions represent candidate corresponding elements and require
+additional transcriptomic or experimental validation. Fifth, absence of overlap
+with annotated loci does not necessarily indicate false positives, and reported
+performance likely underestimates true recall due to annotation incompleteness.
+
+Finally, \curia{} does not explicitly distinguish between shared evolutionary
+origin and convergent similarity at the level of embedding space. While synteny
+strongly biases predictions toward corresponding loci with shared ancestry,
+embedding similarity may also capture convergent structural features or recurrent
+local motifs. Accordingly, high-confidence matches should be interpreted as
+candidate corresponding elements supported by both synteny and embedding
+similarity, rather than definitive evidence of shared evolutionary origin.
+
+\subsection{Embedding-based similarity and interpretability}
+Embedding representations used in \curia{} are derived from RNA foundation models
+trained on large collections of RNA sequences without explicit structural
+supervision
+\citep{chenInterpretableRNAFoundation2022,akiyamaInformativeRNABase2022,vahabAdvancingNoncodingRNA2025}.
+Prior work has shown that such models encode representations associated with RNA
+secondary structure and related functional properties, and can support downstream
+structure prediction tasks \citep{shenAccurateRNA3D2024}. In this context,
+embedding similarity provides an implicit measure of correspondence that is not
+tied directly to primary-sequence identity. Empirically, match scores form a
+continuous scale separating high-confidence matches from background signal. This
+interpretation is broadly consistent with observations from protein language
+models, where representations learned from sequence alone organize according to
+structural and functional properties \citep{rivesBiologicalStructureFunction2021}.
+
+\subsection{Failure modes}
+The limitations of \curia{} follow directly from its design assumptions. First,
+the method depends on the presence of localized signal in embedding space; loci
+lacking such signal are unlikely to yield detectable correspondence. Second,
+\curia{} relies on genome alignment chains to constrain the search space, so
+correspondence cannot be recovered outside aligned regions, and alignment errors
+propagate directly to predictions. Third, the approach assumes approximate
+collinearity and focuses on local similarity; it therefore does not capture
+rearrangements of structured elements or long-range RNA interactions.
+
+\subsection{Future directions}
+% TODO(rinalmo): This subsection was written for RNA-FM, whose embeddings were
+% "local and context-dependent". RiNALMo is context-STABLE (near-zero drift),
+% which is why islands are now embedded once. Reframe: context stability is
+% partly ACHIEVED here; the open problem shifts toward multi-resolution modeling
+% of long-range structure rather than boundary sensitivity.
+Several directions follow from the current design. Earlier embedding models such
+as RNA-FM were sensitive to sequence boundaries, which constrained matching to
+per-window re-embedding; RiNALMo's context stability removes this constraint and
+enables embed-once island alignment. A remaining challenge is capturing broader
+structural context: representations that preserve fine-scale localization while
+modeling longer-range structure could support a multi-resolution framework in
+which candidate regions are first identified at coarse scale and then refined
+locally.
+
+In the current formulation, genome alignment chains are used primarily to restrict
+the search space. Future work could make more flexible use of genomic context,
+including weaker forms of syntenic evidence such as conserved neighborhood
+structure, intronic or antisense relationships, and proximity to orthologous
+protein-coding genes. A related challenge is the interpretation of matched regions
+in evolutionary terms: incorporating multi-species consistency, conservation of
+local genomic context, and phylogenetic patterns could help distinguish shared
+evolutionary origin from convergent structural similarity, moving the framework
+from correspondence detection toward a more explicit treatment of ncRNA orthology.
+
+\curia{} currently operates in a pairwise setting, whereas ncRNA correspondence is
+inherently a multi-species problem. Extending the framework to jointly model
+multiple species would enable phylogenetically informed consistency constraints,
+improving robustness and reducing false positives. Finally, extending \curia{}
+from a proof-of-concept pipeline to a broader annotation framework will require
+improvements in sensitivity, robustness, and interpretability, including better
+treatment of ambiguous loci, stronger filtering of false positives, clearer
+confidence calibration, and tighter integration with existing genome annotation
+ecosystems.

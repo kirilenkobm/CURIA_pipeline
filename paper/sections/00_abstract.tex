@@ -1,15 +1,26 @@
 \begin{abstract}
-% TODO: rewrite once the 10-mammal RiNALMo run completes.
-Non-coding RNAs (ncRNAs) are poorly conserved at the sequence level, which makes
-cross-species annotation by homology unreliable. We present \curia{}
-(Cross-species Unified ncRNA Inference and Annotation), a pipeline that projects
-reference ncRNA loci into a query genome along whole-genome alignment chains and
-resolves annotation in the embedding space of an RNA language model rather than by
-raw sequence identity. \curia{} refines short ncRNAs by local matching in embedding
-space and analyses long ncRNAs through localized structured subregions
-(``islands''), restricting the genome-wide search to syntenic candidate loci.
-The current implementation uses \rinalmo{} embeddings, whose near-invariance to
-flanking context enables each island to be embedded once and aligned at
-nucleotide resolution. We evaluate \curia{} on several mammalian genome pairs.
-\emph{[Quantitative results to be inserted.]}
+% ---------------------------------------------------------------------
+% NOTE: quantitative figures below (53.1%, ~700 loci) are from the
+% RNA-FM-era run. TODO: update from the 10-mammal RiNALMo panel.
+% ---------------------------------------------------------------------
+Reference-based annotation transfer via orthology has been highly successful for
+protein-coding genes but remains challenging for non-coding RNAs (ncRNAs) due to
+weak sequence conservation, ambiguous transcript boundaries, and incomplete
+annotations. Here we present \curia{}, a pipeline for cross-species ncRNA
+annotation that combines genome alignment chains with embedding-based
+representations derived from RNA foundation models. \curia{} formulates
+cross-species ncRNA correspondence as synteny-constrained matching in embedding
+space. It first identifies candidate loci using a simplified TOGA-based
+projection, then detects localized subregions (``islands'') within transcripts,
+and finally establishes cross-species correspondence using similarity of
+embedding representations. Because the embedding model is essentially invariant
+to flanking context, each island is embedded once and matched at nucleotide
+resolution. Using a conservative annotation-based evaluation across ten mammalian
+genomes, \curia{} identified short ncRNA loci, 53.1\% of which overlapped existing
+annotations, and uncovered ${\sim}700$ candidate conserved intergenic lncRNA loci
+absent from current annotations. These results suggest that combining synteny
+with embedding-based similarity can support cross-species ncRNA annotation in
+settings where primary-sequence conservation alone is insufficient, establishing
+a proof of concept for integrating comparative genomics with RNA foundation-model
+embeddings for genome-scale ncRNA analysis.
 \end{abstract}

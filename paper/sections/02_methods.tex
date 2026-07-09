@@ -2,66 +2,334 @@
 \label{sec:methods}
 
 % =====================================================================
-% NOTE FOR REWRITE:
-% This is the section that changes most, moving from RNA-FM to RiNALMo.
-% Key differences to reflect throughout:
-%   - Embedding model: RiNALMo giga-v1 (1280-dim, 650M params), default.
-%     RNA-FM retained only for comparison / deprecated.
-%   - RiNALMo embeddings are ~invariant to flanking context (=0 MMD drift),
-%     so islands are embedded ONCE and matched by Smith-Waterman on the
-%     per-token cosine dotplot -- no per-window re-embedding (unlike RNA-FM).
-%   - Two PCA projections: k=16 for matching (position-level), k=64 for
-%     island-finding; plus a logistic-regression signal/noise classifier.
-%     Artifacts live under modules/global_PCA and modules/logreg_signal_noise.
+% This section was rewritten for the RiNALMo pipeline. Parameter values
+% are taken from the current code:
+%   modules/model_registry.py
+%   modules/pipeline/short_ncrna.py
+%   modules/pipeline/matchers/rinalmo.py
+%   modules/logreg_signal_noise/build_rinalmo_finding.py
+% The RNA-FM path is retained in the code for comparison only (deprecated).
+% Numbers flagged "verify" should be re-checked against the final artifacts
+% before submission.
 % =====================================================================
 
-\subsection{Overview}
-\curia{} takes a reference annotation (BED12), reference metadata, a query and a
-reference genome (2bit), and whole-genome alignment chains, and produces ncRNA
-annotations in the query genome. Processing has three stages: (i)
-orthology-guided locus projection along chains, (ii) embedding of candidate loci
-with an RNA language model, and (iii) resolution of the annotation --- short
-ncRNA refinement by local matching, or long ncRNA analysis via islands.
+\subsection{Pipeline overview}
+\curia{} is a computational pipeline for genome-scale cross-species ncRNA
+correspondence that combines chain-guided locus prediction with embedding-based
+comparison (Figure~\ref{fig:pipeline}). Given a reference genome with ncRNA
+annotations and one or more query genomes linked by genome alignment chains,
+\curia{} produces: (i) predicted corresponding loci, (ii) an embedding-based
+similarity score, and, for long ncRNAs, (iii) matched localized subregions
+(``islands'').
 
-\subsection{Synteny-constrained locus projection}
-% TODO: describe chain-based projection and the RNA TOGA step.
-Reference loci are projected into the query genome using alignment chains,
-restricting the search to syntenic candidate regions
-\citep{kirilenko2023toga}.
+The pipeline follows a branching architecture after an initial projection step,
+handling short and long ncRNAs separately. Short ncRNAs yield a single refined
+locus, whereas long ncRNAs yield a set of island-level alignments. The pipeline
+consists of seven stages:
+\begin{enumerate}
+  \item \textbf{Preprocessing.} Overlapping isoforms are collapsed into a union
+        transcript per locus.
+  \item \textbf{Candidate region prediction.} Genome alignment chains are used to
+        identify candidate query regions via a simplified TOGA-inspired classifier
+        (Section~\ref{sec:candidate}).
+  \item \textbf{Short ncRNA refinement.} Candidate loci are refined using
+        embedding-based local boundary search (Section~\ref{sec:short}).
+  \item \textbf{Reference island detection.} Localized subregions (``islands'')
+        are detected within transcripts (Section~\ref{sec:refisland}).
+  \item \textbf{Chain-guided projection.} Reference islands are projected to the
+        query genome to define targeted search regions
+        (Section~\ref{sec:projisland}).
+  \item \textbf{Query island detection.} Candidate islands are identified in
+        projected regions (Section~\ref{sec:queryisland}).
+  \item \textbf{Island alignment.} Reference and query islands are matched by
+        embedding-based alignment (Section~\ref{sec:islandalign}).
+\end{enumerate}
+Outputs include candidate region assignments, refined short ncRNA loci, and
+island-level alignments.
 
-\subsection{RNA language-model embeddings}
-Candidate loci are embedded with \rinalmo{} (\texttt{giga-v1}; 1280-dimensional
-token embeddings) \citep{penic2024rinalmo}. Unlike \rnafm{}
-\citep{chen2022rnafm}, \rinalmo{} embeddings are essentially invariant to
-flanking sequence: moving the input boundaries leaves token embeddings almost
-unchanged (negligible MMD drift). This context stability is what allows the
-matching stage below to embed each region once.
+\begin{figure}[t]
+  \centering
+  % TODO(fig2): mostly conceptual; minor update for embed-once island matching.
+  \includegraphics[width=\linewidth]{fig2_pipeline.png}
+  \caption{Overview of the \curia{} pipeline for cross-species ncRNA
+  correspondence analysis. \textbf{(A)} Genome alignment chains restrict the
+  search space by defining candidate loci between reference and query genomes.
+  \textbf{(B)} For long ncRNAs, localized subregions (``islands'') are detected
+  and matched across species using embedding-based similarity, enabling
+  localization of candidate conserved elements within transcripts. \textbf{(C)}
+  For short ncRNAs, correspondence is resolved via local boundary refinement using
+  sliding-window matching in embedding space.}
+  \label{fig:pipeline}
+\end{figure}
 
-Two linear projections are fit on reference embeddings and stored as pipeline
-artifacts: a $k{=}16$ PCA for position-level matching and a $k{=}64$ PCA for
-island finding. A logistic-regression classifier separates conserved
-(``signal'') from background (``noise'') positions during island finding.
+\subsection{Input data}
+\curia{} requires three types of input data:
+\begin{enumerate}
+  \item \textbf{Reference genome and annotation.} The reference genome is provided
+        in 2bit format, with ncRNA annotations in BED12 format including
+        \texttt{transcript\_id}, \texttt{gene\_id}, and \texttt{biotype}.
+        Protein-coding transcripts are used during candidate region prediction to
+        compute synteny-related features, but are excluded from downstream
+        analysis.
+  \item \textbf{Query genomes.} Query genomes are provided in 2bit format.
+        Query-side annotations are not required for prediction but may be used for
+        evaluation.
+  \item \textbf{Genome alignment chains.} Pairwise genome alignment chains (UCSC
+        chain format) define syntenic relationships between reference and query
+        genomes. Low-scoring chains are filtered during loading.
+\end{enumerate}
 
-\subsection{Short ncRNA refinement}
-% TODO
-Short ncRNAs ($\leq 160$\,bp) are refined by local matching of query and
-reference embeddings, reporting the best-scoring alignment per locus.
+\subsection{Candidate region prediction}
+\label{sec:candidate}
+\textbf{Input.} Union transcripts and genome alignment chains.
 
-\subsection{Long ncRNA islands}
-% TODO
-Long ncRNAs are represented by localized structured subregions (``islands'').
-Because embeddings are context-stable, each island is embedded once and aligned
-to the reference by Smith--Waterman on the per-token cosine similarity dotplot,
-yielding nucleotide-resolution matches without per-window re-embedding.
+\textbf{Operation.} \curia{} uses a simplified TOGA-inspired chain-guided
+projection step \citep{kirilenkoIntegratingGeneAnnotation2023} to define coarse
+candidate regions for ncRNA loci rather than full transcript reconstructions
+(Figure~\ref{fig:pipeline}A). For each chain--transcript pair, a small set of
+features is computed: (1) synteny, defined as the number of distinct genes
+intersecting the same alignment chain (log-transformed); (2) global exonic
+occupancy, the fraction of aligned chain bases overlapping annotated exons; and
+(3) flank coverage, the fraction of $\pm10$\,kb flanking regions covered by chain
+alignment blocks.
 
-\subsection{Implementation and parameters}
-Per-model parameters (PCA files, signal/noise classifier, scan and match
-thresholds, embedding strategy) are selected automatically by the \texttt{-{}-model}
-flag and are recorded in the model registry. Embeddings use PyTorch's
-memory-efficient scaled-dot-product attention; runs were executed on GPU
-(CUDA / MPS).
+A logistic regression classifier assigns a correspondence probability based on
+these features. The classifier was trained on labeled chain--transcript pairs
+derived from human--mouse projections (410{,}776 pairs; 79{,}065 orthologous and
+331{,}711 paralogous). On a held-out test set, the classifier achieved
+ROC-AUC $= 0.982$. Pairs with predicted probability $\geq 0.5$ were retained. This
+step depends only on chain-level synteny features and is independent of the
+choice of RNA embedding model.
 
-\subsection{Evaluation}
-% TODO: describe the 10-mammal panel and metrics once the RunPod run completes.
-\curia{} was evaluated on several mammalian genome pairs, including
-human--mouse.
+For each retained pair, candidate query intervals were obtained by projecting the
+transcript through the corresponding alignment chain. Intervals were defined as
+the span of chain blocks overlapping the transcript, including flanking regions to
+account for alignment imprecision. When multiple chains satisfied the threshold
+for a given transcript, all corresponding intervals were retained.
+
+\textbf{Output.} Projected candidate query regions with associated metadata.
+
+\textbf{Rationale.} Only coarse locus-level projections are required to constrain
+downstream analysis, avoiding assumptions related to coding sequence structure and
+transcript reconstruction.
+
+\subsection{RNA embeddings}
+\label{sec:embeddings}
+Sequences are embedded with the RiNALMo general-purpose RNA language model
+(\texttt{giga-v1}; 650M parameters, 1280-dimensional per-token embeddings)
+\citep{penicRiNALMoGeneralpurposeRNA2025}. RiNALMo embeddings are essentially
+invariant to flanking sequence context: perturbing input boundaries leaves
+per-token embeddings almost unchanged. This property is central to the island
+matching procedure (Section~\ref{sec:islandalign}), which embeds each island once
+and slices per-token embeddings into local windows, rather than re-embedding each
+window in its own short context as required by context-dependent models such as
+RNA-FM \citep{chenInterpretableRNAFoundation2022}.
+
+Two linear projections are fit on a large corpus of RiNALMo embeddings and stored
+as pipeline artifacts: a $k{=}16$ PCA used for position-level matching, and a
+$k{=}64$ PCA used for island finding. Per-model parameters (PCA files,
+signal/noise classifier, scan and match thresholds, embedding strategy) are
+recorded in a model registry and selected automatically. RNA-FM
+\citep{chenInterpretableRNAFoundation2022} (640-dimensional) is retained in the
+implementation for comparison only.
+
+\subsection{Short ncRNA pipeline}
+\label{sec:short}
+Short ncRNAs (e.g., miRNAs, tRNAs, snoRNAs, snRNAs) typically occupy compact loci,
+allowing direct local comparison without island-based decomposition
+(Figure~\ref{fig:pipeline}C). This branch processes single-exon ncRNAs up to
+160\,nt. For each locus, the reference sequence is embedded and the corresponding
+query region is extended symmetrically to account for alignment imprecision.
+Candidate windows matching the reference length are tiled across the query region
+and compared to the reference using MMD (Section~\ref{sec:mmd}). The best match is
+then refined by local boundary perturbation ($\pm 5$\,nt), constrained to a
+length within $0.8$--$1.2\times$ the reference length. Embeddings are projected
+from 1280 to 16 dimensions using the matching PCA prior to comparison.
+
+\textbf{Output.} Refined query coordinates with an MMD-based similarity score.
+
+\subsection{Similarity in embedding space (MMD)}
+\label{sec:mmd}
+For short ncRNAs, window similarity is quantified using Maximum Mean Discrepancy
+(MMD) \citep{grettonKernelTwoSampleTest2012} with an RBF kernel, treating
+per-position embeddings as empirical distributions:
+\begin{equation}
+  \mathrm{MMD}^2(X, Y) = \frac{1}{n^2}\sum_{i,j} k(x_i, x_j)
+    + \frac{1}{m^2}\sum_{i,j} k(y_i, y_j)
+    - \frac{2}{nm}\sum_{i,j} k(x_i, y_j),
+\end{equation}
+where $k(x, y) = \exp(-\gamma \lVert x - y \rVert^2)$, and
+$X = \{x_1, \dots, x_n\}$, $Y = \{y_1, \dots, y_m\}$ denote the sets of
+per-position embedding vectors for two sequence windows. The kernel bandwidth
+$\gamma$ is set using the median pairwise-distance heuristic computed within each
+comparison. Low MMD indicates similar embedding distributions; higher values
+correspond to dissimilar or background signal.
+
+\subsection{Reference lncRNA island detection}
+\label{sec:refisland}
+To detect RNA-like signal, we trained a logistic regression classifier on
+fixed-length sequence windows represented in RiNALMo embedding space. Positive
+examples consisted of ncRNA-derived windows (including lncRNAs, miRNAs, snoRNAs,
+snRNAs, scaRNAs, and misc\_RNAs), labeled by their overlap with annotated ncRNA
+exons; negative examples consisted of intergenic, non-exonic genomic windows.
+Windows were embedded with RiNALMo, mean-pooled across positions, and projected
+from 1280 to 64 dimensions using the finding PCA prior to training. Training loci
+were balanced across biotypes (up to 150 loci per biotype, with an additional 71
+held-out loci per biotype for calibration).
+% TODO(verify): CV-AUC and calibrated detection numbers are read from
+% modules/logreg_signal_noise/logreg_noise_model_rinalmo.json -- confirm against
+% the final committed artifact before submission.
+On 5-fold cross-validation the classifier achieved ROC-AUC $\approx 0.79$; at a
+calibrated background false-positive budget of $\leq 20\%$, it detected $\approx
+78\%$ of signal windows ($\geq 40$\,nt overlap).
+
+The resulting model distinguishes embedding patterns associated with annotated
+ncRNAs from genomic background and is used as a lightweight detector of localized
+RNA-like signal rather than a general ncRNA annotation model
+\citep{willLocARNA20Versatile2024,hochsmannLocalSimilarityRNA2003}.
+
+Each reference union transcript is scanned using a sliding window (128\,nt, stride
+40\,nt). Windows are embedded, mean-pooled, projected to the finding PCA space,
+and scored by the classifier. The resulting probability trace is smoothed using a
+moving-average filter (window size $= 5$), and contiguous regions exceeding a
+fixed probability threshold ($0.5$) are defined as candidate islands. Island
+coordinates are mapped to genomic space, allowing multi-segment islands across
+splice junctions.
+
+\textbf{Output.} Reference islands with genomic coordinates and associated scores.
+
+\subsection{Chain-guided projection of islands}
+\label{sec:projisland}
+\textbf{Input.} Reference islands, genome alignment chains, and candidate region
+assignments.
+
+Reference islands are projected through alignment chains to define candidate query
+regions (Figure~\ref{fig:pipeline}A). Intervals are extended to account for
+alignment imprecision. Projected intervals on the same chromosome and strand are
+merged into non-redundant regions while retaining links to the originating
+reference islands.
+
+\textbf{Output.} Query regions with mappings to reference islands.
+
+\subsection{Local query island evaluation}
+\label{sec:queryisland}
+\textbf{Input.} Merged query regions, query genome, and the classifier from
+Section~\ref{sec:refisland}.
+
+Each query region is scanned using the same procedure as reference island
+detection. Windows are embedded, projected, and scored, and contiguous
+high-scoring regions are defined as islands. Basic filtering removes regions with
+implausible size or lacking corresponding reference signal.
+
+\textbf{Output.} Query islands with genomic coordinates and scores.
+
+\subsection{Island alignment in embedding space}
+\label{sec:islandalign}
+Because RiNALMo embeddings are context-stable, each island (reference and query)
+is embedded \emph{once}, and its per-token embeddings are projected to the
+matching PCA space ($1280 \to 16$). For a reference island with per-token matrix
+$A \in \mathbb{R}^{L_r \times 16}$ and a query island $B \in \mathbb{R}^{L_q
+\times 16}$, we L2-normalize the rows and form the per-token cosine similarity
+dotplot $C = \hat{A}\hat{B}^\top$, where $C_{ij}$ is the cosine similarity between
+reference position $i$ and query position $j$.
+
+Local nucleotide-resolution correspondences are extracted by a Smith--Waterman
+procedure \citep{smithIdentificationCommonMolecular1981} on the score matrix
+$S = C - \tau$, with cosine offset $\tau = 0.5$ and a linear gap penalty of $0.3$.
+Candidate matches are filtered by minimum island length ($\geq 72$\,nt), minimum
+effective aligned length ($\geq 40$\,nt), and match quality
+($1 - \overline{\cos} \leq 0.1$, where $\overline{\cos}$ is the mean cosine
+similarity along the aligned band). Each query island is assigned to at most one
+reference island by a greedy procedure prioritizing the highest-scoring match. For
+downstream ranking we report a distance $d = 1/(1 + s)$, where $s$ is the
+Smith--Waterman score integrating cosine similarity over the aligned band length;
+lower $d$ indicates a stronger match.
+
+% TODO(verify): matching benchmark numbers (AUC 0.993 vs 0.651 for RNA-FM
+% window-MMD) are from notebooks/matching_benchmark.ipynb.
+On a Rfam-derived same-family versus cross-family benchmark, this embed-once
+cosine-dotplot matcher substantially outperformed the window-MMD alignment used
+with RNA-FM (AUC $0.993$ vs $0.651$) while avoiding per-window re-embedding.
+
+\begin{figure}[t]
+  \centering
+  % TODO(fig3): REDRAW. Panel B showed the RNA-FM window-MMD matrix + SW; the
+  % RiNALMo matcher is embed-once per-token COSINE dotplot + nt-Smith-Waterman
+  % (Section 2.11). The matrix and its axes/units change entirely.
+  \includegraphics[width=\linewidth]{fig3_islands.png}
+  \caption{Identification and matching of localized ncRNA subregions using
+  embedding-based similarity. \textbf{(A)} RNA-like signal along a reference
+  transcript is detected using an embedding-based score and thresholded to define
+  localized subregions (``islands''). These islands are projected via genome
+  alignment chains to define candidate regions in the query genome, where
+  corresponding subregions are identified. \textbf{(B)} Similarity between
+  reference and query islands is computed as a per-token cosine dotplot, and local
+  matches are extracted using a Smith--Waterman procedure.}
+  \label{fig:islands}
+\end{figure}
+
+\subsection{Evaluation metrics}
+\label{sec:eval}
+Evaluation is based on agreement with existing annotations and serves as an
+approximate proxy for ground truth. Due to incomplete and heterogeneous ncRNA
+annotation across species, these metrics should be interpreted as measures of
+annotation agreement rather than direct estimates of biological accuracy.
+
+\subsubsection{Short ncRNA evaluation}
+For short ncRNAs, evaluation is performed at the locus level using overlap with
+annotated transcripts. A predicted region is considered a match if it overlaps an
+annotated ncRNA with $\geq 50\%$ reciprocal overlap. We report annotation
+agreement (fraction of predictions overlapping annotated loci), locus recovery
+(fraction of annotated loci recovered), and near-complete matches (fraction of
+predictions with $\geq 99\%$ overlap).
+
+\subsubsection{lncRNA locus-level evaluation}
+For lncRNAs, evaluation is performed at the locus level with relaxed criteria due
+to boundary ambiguity. A predicted locus is considered supported if it overlaps
+any annotated exon of an ncRNA gene. We report the fraction of loci overlapping
+annotated exons and the distribution of overlap proportions across predictions.
+
+\subsubsection{Island-level evaluation}
+For long ncRNAs, evaluation is extended to localized subregions (``islands''). A
+matched island is considered supported if it overlaps any annotated ncRNA exon in
+the query genome. We report the fraction of matched islands overlapping annotated
+regions, the number of matched islands per locus, and cross-species consistency of
+island matches.
+
+\subsubsection{Annotation agreement versus confidence}
+To assess the relationship between embedding-based similarity and annotation
+support, we analyze annotation agreement as a function of the match score.
+Predictions are stratified by score and we report the fraction overlapping
+annotations across bins and the score distributions for overlapping and
+non-overlapping predictions. This provides an empirical characterization of the
+score as a measure of correspondence confidence, rather than relying on predefined
+thresholds.
+
+\subsubsection{Limitations}
+Predictions outside annotated regions may represent either false positives or
+unannotated ncRNAs
+\citep{hezroniPrinciplesLongNoncoding2015,mattickLongNoncodingRNAs2023,perteaCHESSNewHuman2018}.
+Annotation completeness varies across species, and ncRNA boundaries are often
+imprecise. Accordingly, reported performance should be interpreted as a lower
+bound.
+
+\subsection{Implementation details}
+\label{sec:impl}
+Embeddings are computed with RiNALMo and projected using two precomputed PCA
+transformations ($1280 \to 16$ for matching, $1280 \to 64$ for island finding),
+fit on a large corpus of RiNALMo embeddings sampled across diverse human
+transcripts to provide a stable, dataset-independent representation. Short ncRNA
+loci are embedded per-window, whereas islands are embedded once and sliced into
+per-token windows locally, exploiting RiNALMo's context stability.
+
+Embedding inference is performed on GPU using batched execution (up to 4096
+sequences per batch), whereas downstream MMD computation, cosine alignment, and
+filtering are performed on CPU. Internally, \curia{} is organized as a staged task
+pipeline that separates embedding inference from downstream analysis: sequence
+windows are processed by a shared GPU worker using micro-batching, while
+subsequent matching and filtering steps operate on persisted intermediate results.
+This design improves hardware utilization, supports incremental execution, and
+allows reference-side preprocessing to be reused across query genomes. Attention
+uses PyTorch's memory-efficient scaled-dot-product attention. Outputs are reported
+in standard tabular and BED formats. The use of fixed embedding models and PCA
+projections ensures consistent representations across runs.
