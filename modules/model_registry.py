@@ -63,9 +63,13 @@ MODELS = {
         "finding_pca_file": "rinalmo_pca_find_k64.npz",
         "logreg_file": "logreg_noise_model_rinalmo.json",
         # Orthology classifier (rna_toga): the RiNALMo path uses the GBM model
-        # (see modules/rna_toga/train_lncrna_gbm.py). Falls back to the legacy
-        # logreg model.json automatically if gbm_model.json is not present.
-        "rna_toga_model": "gbm_model.json",
+        # trained with curated ncRNA positives (modules/rna_toga/train_ncrna_positives.py).
+        # It is the deployed GBM-7 regime + a handful of relabelled/upweighted conserved
+        # lncRNAs (NEAT1, MALAT1, ...) whose protein-coding-derived labels were wrong;
+        # a near-exact drop-in for gbm_model.json (+~0.1% ORTH genes) that recovers those
+        # genes without the pseudogene flood a rebalanced/lean model produces.
+        # Falls back to the legacy logreg model.json if the file is missing.
+        "rna_toga_model": "gbm_model_ncrna.json",
         "emb_dim": 1280,
         "pca_components": 16,
         # RiNALMo is context-stable (~0 MMD drift under flanking context, see
