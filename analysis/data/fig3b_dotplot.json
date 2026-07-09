@@ -1,0 +1,14 @@
+{
+  "gene": "SNHG12",
+  "ref_island": "R2",
+  "query_island": "Q2",
+  "ref": "chr1:28580829-28582117 (hg38)",
+  "query": "chr4:132035758-132036966 (mm39)",
+  "match_score": 69.15754547268136,
+  "match_mean_cos": 0.6987612616876187,
+  "ctrl_gene": "U_ENSG00000130600.23",
+  "ctrl_score": 11.20816180650145,
+  "ctrl_mean_cos": 0.6568142449428027,
+  "tau": 0.5,
+  "gap": 0.3
+}

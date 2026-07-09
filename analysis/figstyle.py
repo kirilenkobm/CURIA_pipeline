@@ -74,7 +74,11 @@ def set_style() -> None:
 
 
 def mosaic(layout: str, width: float = FULL_WIDTH, height: float = 4.0, **kw):
-    """Thin wrapper over plt.subplot_mosaic with our default figure size."""
+    """Thin wrapper over plt.subplot_mosaic with our default figure size.
+
+    Uses constrained layout so panel titles/labels never collide across rows.
+    """
+    kw.setdefault("layout", "constrained")
     fig, axd = plt.subplot_mosaic(layout, figsize=(width, height), **kw)
     return fig, axd
 

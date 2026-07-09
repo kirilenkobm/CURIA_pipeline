@@ -1,0 +1,44 @@
+{
+  "A": {
+    "0": {
+      "color": "#2b6cb0",
+      "label": "tRNA-Asn (copy 1)"
+    },
+    "1": {
+      "color": "#63b3ed",
+      "label": "tRNA-Asn (copy 2)"
+    },
+    "2": {
+      "color": "#dd6b20",
+      "label": "miRNA (MIR103A1)"
+    }
+  },
+  "B": {
+    "0": {
+      "label": "tRNA",
+      "color": "#38a169",
+      "signal": true
+    },
+    "1": {
+      "label": "snoRNA",
+      "color": "#dd6b20",
+      "signal": true
+    },
+    "2": {
+      "label": "miRNA",
+      "color": "#6b46c1",
+      "signal": true
+    },
+    "3": {
+      "label": "Background",
+      "color": "#a0aec0",
+      "signal": false
+    }
+  },
+  "provenance": {
+    "model": "rinalmo giga-v1",
+    "pca_A": "rinalmo_pca_k16 (per-token)",
+    "pca_B": "rinalmo_pca_find_k64 (mean-pool)",
+    "seed": 42
+  }
+}

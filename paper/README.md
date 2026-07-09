@@ -37,12 +37,16 @@ in `figures/`.
 
 | Fig | How it's made | File in `figures/` |
 |-----|---------------|--------------------|
-| 1 embeddings   | **scripted** (`fig1_embeddings`) | `fig1_embeddings.pdf` |
-| 2 pipeline     | schematic (Affinity/draw.io)     | `fig2_pipeline.pdf`   |
-| 3 islands      | A = schematic, **B scripted** (`fig3b_dotplot`) | `fig3_islands.pdf` |
-| 4 MMD          | **scripted** (`fig4_mmd`)        | `fig4_mmd.pdf`        |
-| 5 case studies | UCSC screenshots, hand-arranged  | `fig5_cases.pdf`      |
-| 6 cores        | **scripted** (`fig6_cores`)      | `fig6_cores.pdf`      |
+| 1 embeddings   | **scripted** (`fig1_embeddings`)         | `fig1_embeddings.pdf` |
+| 2 pipeline     | **scripted** schematic (`fig2_pipeline`) | `fig2_pipeline.pdf`   |
+| 3 islands      | **scripted** (`fig3_islands`): A schematic + B real SNHG12 SW-matrix | `fig3_islands.pdf` |
+| 4 MMD          | **scripted** (`fig4_mmd`)                | `fig4_mmd.pdf`        |
+| 5 case studies | UCSC screenshots, hand-arranged          | `fig5_cases.pdf`      |
+| 6 cores        | **scripted** (`fig6_cores`)              | `fig6_cores.pdf`      |
+
+Only Fig 5 (genome-browser screenshots) is hand-made; everything else is
+matplotlib. Figs 4/6 are wired to `--results-dir` and still stubbed pending the
+wider run.
 
 Scripted figures are composed **entirely in matplotlib** — panel letters, sizing
 to the paper text width, embedded (editable) fonts — so no hand-composition step
@@ -57,6 +61,18 @@ builder in `analysis/make_figures.py`.
 .venv/bin/python analysis/make_figures.py --outdir paper/figures --results-dir ../rinalmo_version_outputs
 ```
 (Or `make figures PYTHON=../.venv/bin/python` from `paper/`.)
+
+**Figure 1 is two-step** (embeddings are expensive; plotting stays torch-free):
+```bash
+# 1) heavy: RiNALMo embeddings -> analysis/data/fig1_embeddings.npz  (run once)
+.venv/bin/python analysis/compute_fig1_embeddings.py
+# 2) light: compose the panels from the cached npz
+.venv/bin/python analysis/make_figures.py --only fig1_embeddings --outdir paper/figures
+```
+Panels A/B (per-token tRNA/miRNA; mean-pooled signal-vs-background) need only a
+handful of model RNAs + RiNALMo — no pipeline run. Panels C/D still stubbed.
+Committing `analysis/data/fig1_embeddings.npz` lets `make_figures` rebuild Fig 1
+without torch/the 2.4 GB model.
 
 Notes:
 - Scripted builders emit **PDF** (vector) + a PNG preview. The `.tex` currently

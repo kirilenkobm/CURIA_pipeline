@@ -88,6 +88,8 @@ temp/
 !modules/rna_toga/gbm_model_ncrna.json
 !modules/logreg_signal_noise/logreg_noise_model.json
 !modules/logreg_signal_noise/logreg_noise_model_rinalmo.json
+# figure-provenance metadata (needed to replot from the cached embeddings)
+!analysis/data/*.json
 *.log
 temp_*
 
