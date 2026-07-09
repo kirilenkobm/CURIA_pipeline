@@ -8,9 +8,6 @@
 %   modules/pipeline/short_ncrna.py
 %   modules/pipeline/matchers/rinalmo.py
 %   modules/logreg_signal_noise/build_rinalmo_finding.py
-% The RNA-FM path is retained in the code for comparison only (deprecated).
-% Numbers flagged "verify" should be re-checked against the final artifacts
-% before submission.
 % =====================================================================
 
 \subsection{Pipeline overview}
@@ -49,7 +46,6 @@ island-level alignments.
 
 \begin{figure}[t]
   \centering
-  % TODO(fig2): mostly conceptual; minor update for embed-once island matching.
   \includegraphics[width=\linewidth]{fig2_pipeline.png}
   \caption{Overview of the \curia{} pipeline for cross-species ncRNA
   correspondence analysis. \textbf{(A)} Genome alignment chains restrict the
@@ -117,21 +113,16 @@ transcript reconstruction.
 \label{sec:embeddings}
 Sequences are embedded with the RiNALMo general-purpose RNA language model
 (\texttt{giga-v1}; 650M parameters, 1280-dimensional per-token embeddings)
-\citep{penicRiNALMoGeneralpurposeRNA2025}. RiNALMo embeddings are essentially
-invariant to flanking sequence context: perturbing input boundaries leaves
-per-token embeddings almost unchanged. This property is central to the island
-matching procedure (Section~\ref{sec:islandalign}), which embeds each island once
-and slices per-token embeddings into local windows, rather than re-embedding each
-window in its own short context as required by context-dependent models such as
-RNA-FM \citep{chenInterpretableRNAFoundation2022}.
+\citep{penicRiNALMoGeneralpurposeRNA2025}. RiNALMo embeddings are largely stable
+across changes in flanking sequence context, so each island is embedded once and
+its per-token embeddings are sliced into local windows for matching
+(Section~\ref{sec:islandalign}) rather than re-embedded per window.
 
 Two linear projections are fit on a large corpus of RiNALMo embeddings and stored
 as pipeline artifacts: a $k{=}16$ PCA used for position-level matching, and a
 $k{=}64$ PCA used for island finding. Per-model parameters (PCA files,
 signal/noise classifier, scan and match thresholds, embedding strategy) are
-recorded in a model registry and selected automatically. RNA-FM
-\citep{chenInterpretableRNAFoundation2022} (640-dimensional) is retained in the
-implementation for comparison only.
+recorded in a model registry and selected automatically.
 
 \subsection{Short ncRNA pipeline}
 \label{sec:short}
@@ -169,19 +160,17 @@ correspond to dissimilar or background signal.
 \label{sec:refisland}
 To detect RNA-like signal, we trained a logistic regression classifier on
 fixed-length sequence windows represented in RiNALMo embedding space. Positive
-examples consisted of ncRNA-derived windows (including lncRNAs, miRNAs, snoRNAs,
-snRNAs, scaRNAs, and misc\_RNAs), labeled by their overlap with annotated ncRNA
-exons; negative examples consisted of intergenic, non-exonic genomic windows.
-Windows were embedded with RiNALMo, mean-pooled across positions, and projected
-from 1280 to 64 dimensions using the finding PCA prior to training. Training loci
-were balanced across biotypes (up to 150 loci per biotype, with an additional 71
-held-out loci per biotype for calibration).
-% TODO(verify): CV-AUC and calibrated detection numbers are read from
-% modules/logreg_signal_noise/logreg_noise_model_rinalmo.json -- confirm against
-% the final committed artifact before submission.
-On 5-fold cross-validation the classifier achieved ROC-AUC $\approx 0.79$; at a
-calibrated background false-positive budget of $\leq 20\%$, it detected $\approx
-78\%$ of signal windows ($\geq 40$\,nt overlap).
+examples consisted of windows from structured ncRNAs (miRNAs, snoRNAs, snRNAs,
+scaRNAs, and misc\_RNAs; lncRNAs were excluded to keep the detector focused on
+compact structured signal), labeled positive when a window covered $\geq 20$\,nt
+of an annotated element; negative examples consisted of intergenic, non-exonic
+genomic windows. Windows were embedded with RiNALMo, mean-pooled across positions,
+and projected from 1280 to 64 dimensions using the finding PCA prior to training.
+Training loci were balanced across biotypes (up to 150 loci per biotype, with an
+additional 71 held-out loci per biotype for calibration). On 5-fold
+cross-validation the classifier achieved ROC-AUC $\approx 0.79$; at a calibrated
+background false-positive budget of $\leq 20\%$, it detected $\approx 78\%$ of
+signal windows ($\geq 40$\,nt overlap).
 
 The resulting model distinguishes embedding patterns associated with annotated
 ncRNAs from genomic background and is used as a lightweight detector of localized
@@ -245,11 +234,9 @@ downstream ranking we report a distance $d = 1/(1 + s)$, where $s$ is the
 Smith--Waterman score integrating cosine similarity over the aligned band length;
 lower $d$ indicates a stronger match.
 
-% TODO(verify): matching benchmark numbers (AUC 0.993 vs 0.651 for RNA-FM
-% window-MMD) are from notebooks/matching_benchmark.ipynb.
-On a Rfam-derived same-family versus cross-family benchmark, this embed-once
-cosine-dotplot matcher substantially outperformed the window-MMD alignment used
-with RNA-FM (AUC $0.993$ vs $0.651$) while avoiding per-window re-embedding.
+On a Rfam-derived benchmark, this matcher separates same-family (homologous) from
+cross-family island pairs with high accuracy (AUC $0.993$;
+\texttt{notebooks/matching\_benchmark.ipynb}).
 
 \begin{figure}[t]
   \centering
@@ -324,7 +311,7 @@ transcripts to provide a stable, dataset-independent representation. Short ncRNA
 loci are embedded per-window, whereas islands are embedded once and sliced into
 per-token windows locally, exploiting RiNALMo's context stability.
 
-Embedding inference is performed on GPU using batched execution (up to 4096
+Embedding inference is performed on GPU using batched execution (up to 2048
 sequences per batch), whereas downstream MMD computation, cosine alignment, and
 filtering are performed on CPU. Internally, \curia{} is organized as a staged task
 pipeline that separates embedding inference from downstream analysis: sequence

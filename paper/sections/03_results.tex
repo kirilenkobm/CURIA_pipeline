@@ -5,9 +5,11 @@
 % ####  DEPRECATED --- RNA-FM-era results. OVERWRITE after the      ####
 % ####  10-mammal RiNALMo panel completes.                          ####
 % ####                                                              ####
-% ####  All numbers below (counts, %, MMD values, AUCs) come from   ####
-% ####  the OLD RNA-FM run and must be regenerated. Kept verbatim   ####
-% ####  as a scaffold so the narrative structure is preserved.      ####
+% ####  Most numbers below are RNA-FM-era placeholders pending the  ####
+% ####  full 10-genome RiNALMo panel. ALREADY updated to real       ####
+% ####  RiNALMo human-mouse data (analysis/pair_numbers.py):        ####
+% ####  §3.3 MMD median/biotype ordering/seq-identity correlation.  ####
+% ####  Still pending: annotation-overlap %, island counts, cores.  ####
 % ####                                                              ####
 % ####  METRIC CHANGE: island-level "MMD" no longer applies --- the ####
 % ####  RiNALMo island matcher reports a cosine-Smith-Waterman      ####
@@ -50,21 +52,22 @@ predictions retain strong syntenic support, suggesting that some may correspond 
 unannotated or weakly annotated ncRNA loci.
 
 \subsection{Short ncRNA performance and score behavior}
-% TODO(rinalmo): short-ncRNA matching still uses MMD, but with RiNALMo
-% embeddings the distribution and thresholds will differ. Regenerate Fig 4.
+% RiNALMo human-mouse numbers below are real (analysis/pair_numbers.py).
+% Still TODO: annotation-overlap-vs-MMD paragraph (needs mouse GENCODE
+% intersect) and Fig 4 regeneration; broaden to the 10-genome panel.
 We evaluated similarity between matched short ncRNA loci using MMD in embedding
-space. Across all predictions, the MMD distribution is skewed toward low values
-(median 0.108; Fig.~\ref{fig:mmd}A), with a substantial fraction of near-zero
-values, indicating consistent embedding representations between matched reference
-and query loci.
+space. For the human--mouse pair (2{,}700 loci), the MMD distribution is skewed
+toward low values (median 0.143; Fig.~\ref{fig:mmd}A), with a substantial fraction
+of near-zero values (34\% below 0.05), indicating consistent embedding
+representations between matched reference and query loci.
 
 Stratification by biotype reveals clear differences (Fig.~\ref{fig:mmd}C).
-snoRNAs and miRNAs exhibit the lowest MMD values, consistent with their compact
-size and well-characterized structural constraints. In contrast, snRNAs and
-misc\_RNAs show higher and broader MMD distributions, likely reflecting increased
-ambiguity due to copy number, sequence divergence, and genomic context. tRNAs
-serve as a positive control, with consistently low MMD values in line with their
-well-characterized structural conservation \citep{chanTRNAscanSE20Improved2021}.
+snoRNAs and tRNAs exhibit the lowest MMD values (median $\approx 0$), consistent
+with their strong, well-characterized structural conservation
+\citep{chanTRNAscanSE20Improved2021}. miRNAs and lncRNAs occupy an intermediate
+range, whereas snRNAs, misc\_RNAs, and rRNA-derived loci show higher and broader
+distributions, likely reflecting copy number, sequence divergence, and genomic
+context.
 
 MMD is strongly associated with annotation agreement. Predictions with low MMD
 values ($\lesssim 0.1$) show high overlap with annotated loci (${\sim}90\%$),
@@ -81,9 +84,9 @@ annotation incompleteness contributes to the observed gap.
 
 To assess whether embedding-based similarity merely recapitulates sequence
 conservation, we compared MMD to pairwise sequence identity for matched short
-ncRNA loci. The two measures were strongly anticorrelated (Pearson $r = -0.797$;
-Spearman $\rho = -0.846$; $n = 2{,}697$). However, this relationship is not
-deterministic: at intermediate sequence identity ($\approx 45$--$60\%$), MMD
+ncRNA loci. The two measures were strongly anticorrelated (Pearson $r = -0.81$;
+Spearman $\rho = -0.85$; $n = 2{,}700$). However, this relationship is not
+deterministic: at intermediate sequence identity ($\approx 40$--$60\%$), MMD
 values span a broad range, indicating that embedding representations capture
 additional structure beyond raw sequence identity in this regime.
 
@@ -210,13 +213,12 @@ ambiguous signal and projection constraints, rather than instability of the
 downstream matching procedure.
 
 \subsection{Runtime and scalability}
-% TODO(rinalmo): re-time on the RiNALMo pipeline; the embed-once island matcher
-% removes per-window re-embedding and should change the runtime profile.
-We evaluated \curia{} on a representative genome pair (hg38 vs mm39). Using an AMD
-EPYC 9575F CPU and an NVIDIA RTX PRO 6000 GPU, the full pipeline completes in
-${\sim}30$ minutes when restricted to primary isoforms, and remains within
-${\sim}1$ hour for a more comprehensive transcript set. Embedding inference is
-performed on GPU with batched execution (up to 4096 sequences per batch), while
+% Runtimes are real RiNALMo numbers (batch 2048): ~3h/pair, e.g. 3h08m, 3h18m
+% for two completed pairs. TODO: finalize the range once all pairs complete.
+We evaluated \curia{} on the mammalian genome-pair panel. Using an AMD EPYC 7713P
+CPU and an NVIDIA RTX PRO 4500 GPU (32\,GB VRAM), a full genome-pair run completes
+in approximately three hours (3.1--3.3\,h across completed pairs). Embedding inference is
+performed on GPU with batched execution (up to 2048 sequences per batch), while
 downstream matching and alignment are CPU-bound. Runtime scales approximately
 linearly with annotation size, and both reference and query island detection are
 restricted to syntenically projected regions, substantially reducing the effective

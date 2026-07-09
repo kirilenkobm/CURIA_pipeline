@@ -36,7 +36,7 @@ and localized rather than transcript-wide. For long ncRNAs, correspondence
 frequently concentrates in compact subregions, while the surrounding transcript
 context shows weak or no detectable similarity. Embedding-based similarity is
 strongly associated with sequence identity for short ncRNAs, but this relationship
-is not uniform: at intermediate sequence identity ($\approx 50$--$60\%$),
+is not uniform: at intermediate sequence identity ($\approx 40$--$60\%$),
 substantial variability is observed, indicating that loci with comparable sequence
 similarity can exhibit markedly different embedding-based similarity.
 
@@ -114,19 +114,12 @@ collinearity and focuses on local similarity; it therefore does not capture
 rearrangements of structured elements or long-range RNA interactions.
 
 \subsection{Future directions}
-% TODO(rinalmo): This subsection was written for RNA-FM, whose embeddings were
-% "local and context-dependent". RiNALMo is context-STABLE (near-zero drift),
-% which is why islands are now embedded once. Reframe: context stability is
-% partly ACHIEVED here; the open problem shifts toward multi-resolution modeling
-% of long-range structure rather than boundary sensitivity.
-Several directions follow from the current design. Earlier embedding models such
-as RNA-FM were sensitive to sequence boundaries, which constrained matching to
-per-window re-embedding; RiNALMo's context stability removes this constraint and
-enables embed-once island alignment. A remaining challenge is capturing broader
-structural context: representations that preserve fine-scale localization while
-modeling longer-range structure could support a multi-resolution framework in
-which candidate regions are first identified at coarse scale and then refined
-locally.
+Several directions follow from the current design. \curia{} matches islands at a
+single scale using per-token embeddings; a remaining challenge is capturing
+broader structural context. Representations that preserve fine-scale localization
+while also modeling longer-range structure could support a multi-resolution
+framework in which candidate regions are first identified at coarse scale and then
+refined locally.
 
 In the current formulation, genome alignment chains are used primarily to restrict
 the search space. Future work could make more flexible use of genomic context,
