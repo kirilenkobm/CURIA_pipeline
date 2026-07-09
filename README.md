@@ -22,27 +22,11 @@ The quickest path is the bundled installer, which sets up the environment (via
 the default RiNALMo weights:
 
 ```bash
-# HTTPS (no SSH key needed; simplest on a fresh machine):
 git clone --recurse-submodules https://github.com/kirilenkobm/CURIA_pipeline.git
-# SSH alternative (needs a key registered with GitHub):
-#   git clone --recurse-submodules git@github.com:kirilenkobm/CURIA_pipeline.git
 cd CURIA_pipeline
 ./install.sh                 # env + RiNALMo weights (~2.6 GB)
 # ./install.sh --with-rnafm  # also fetch RNA-FM weights (comparison only)
 # ./install.sh --no-weights  # environment only
-source .venv/bin/activate
-```
-
-> **Submodules:** RiNALMo/RNA-FM are git submodules. Always clone with `--recurse-submodules`
-> (or run `git submodule update --init --recursive` after cloning). If a submodule's SSH URL
-> fails on a keyless box, force HTTPS with:
-> `git config --global url."https://github.com/".insteadOf "git@github.com:"`
-
-Or do it manually:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv is missing
-uv sync
 source .venv/bin/activate
 ```
 
@@ -94,7 +78,7 @@ are selected automatically by `--model`.
 # Optional: benchmark optimal GPU batch size for your hardware
 python modules/GPU_executor/benchmark_batch_size.py
 
-# Run smoke test (<1 minute on strong machines)
+# Run smoke test (a couple of minutes on strong machines)
 ./curia.py \
   --ref-bed12 input_data/reference_annotation/smoke_test.bed \
   --reference-metadata input_data/reference_annotation/smoke_test.metadata.tsv \
@@ -206,8 +190,10 @@ For full evaluation details and limitations, see the preprint.
 
 If you use CURIA, please cite:
 
-Kirilenko, B.M. (2026).  
-Cross-species ncRNA annotation using synteny-constrained embedding similarity.  
+Bogdan M. Kirilenko (2026).
+
+Cross-species ncRNA annotation using synteny-constrained embedding similarity.
+
 bioRxiv (preprint).
 
 ---
