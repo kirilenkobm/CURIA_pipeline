@@ -35,12 +35,24 @@ from train_lncrna_gbm import FEATURES_7, load_data, export_gbm, gbm_proba_local
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# deeply conserved lncRNAs to force-positive (ENSG base -> name). Extend this list as
-# more curated ncRNA orthologs become available.
+# Deeply conserved lncRNAs with clear mammalian orthologs, forced-positive (ENSG base
+# -> name). Extend as more curated ncRNA orthologs become available.
+# NOTE ON EXCLUSIONS: do NOT add lineage-specific genes here — e.g. XACT is primate-
+# specific (no mouse ortholog), so forcing it ORTH would teach the model a false
+# positive. TUG1 is annotated protein_coding (orthology already trivial) and BISPR has
+# an uncertain mouse ortholog; both left out. In hg38->mm39 most of these already pass
+# the orthology gate, so the main value is cross-species robustness for the wider run.
 CURATED_POSITIVES = {
+    # original hallmark set
     "ENSG00000245532": "NEAT1", "ENSG00000251562": "MALAT1", "ENSG00000229807": "XIST",
     "ENSG00000214548": "MEG3", "ENSG00000269821": "KCNQ1OT1", "ENSG00000130600": "H19",
     "ENSG00000234741": "GAS5",
+    # expanded well-known conserved lncRNAs
+    "ENSG00000228630": "HOTAIR", "ENSG00000247556": "OIP5-AS1", "ENSG00000272888": "CHASERR",
+    "ENSG00000260032": "NORAD", "ENSG00000213468": "FIRRE", "ENSG00000225783": "MIAT",
+    "ENSG00000268388": "FENDRR", "ENSG00000243766": "HOTTIP", "ENSG00000249859": "PVT1",
+    "ENSG00000177410": "ZFAS1", "ENSG00000245694": "CRNDE", "ENSG00000226950": "DANCR",
+    "ENSG00000225746": "MEG8", "ENSG00000231721": "LINC-PINT", "ENSG00000270141": "TERC",
 }
 
 
