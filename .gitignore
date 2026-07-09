@@ -162,7 +162,8 @@ rinalmo_version_outputs/*
 /cleanup_quick_test_results.sh
 .micromamba/
 
-preprint__deprecated/*
+# Old RNA-FM preprint materials (kept on disk, out of git)
+preprint__deprecated/
 # Deprecated RNA-FM-era results (superseded by rinalmo_version_outputs/)
 preprint_results__deprecated/
 
