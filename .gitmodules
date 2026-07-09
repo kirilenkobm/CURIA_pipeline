@@ -1,6 +1,6 @@
 [submodule "modules/RNA-FM"]
 	path = modules/RNA-FM
-	url = git@github.com:kirilenkobm/RNA-FM.git
+	url = https://github.com/kirilenkobm/RNA-FM.git
 [submodule "modules/RiNALMo"]
 	path = modules/RiNALMo
-	url = git@github.com:kirilenkobm/RiNALMo.git
+	url = https://github.com/kirilenkobm/RiNALMo.git
