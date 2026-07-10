@@ -11,7 +11,7 @@ MAIN    := main
 PYTHON  := python
 ANALYSIS:= ../analysis
 
-.PHONY: all pdf assets figures tables watch clean distclean
+.PHONY: all pdf assets figures tables cores watch clean distclean
 
 pdf: $(MAIN).pdf
 
@@ -27,6 +27,11 @@ figures:
 
 tables:
 	$(PYTHON) $(ANALYSIS)/make_tables.py --outdir tables
+
+# Supplementary conserved-cores TSV (large; linked from the paper, not inlined).
+# Writes ../preprint_results/lncRNAs_with_conserved_cores.tsv from the run panel.
+cores:
+	$(PYTHON) $(ANALYSIS)/make_conserved_cores.py --results-dir ../rinalmo_version_outputs
 
 watch:
 	latexmk -pdf -pvc -interaction=nonstopmode $(MAIN).tex

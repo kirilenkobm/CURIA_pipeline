@@ -387,6 +387,23 @@ def parse_args():
         help="Path to the orthology model JSON (logreg model.json or a GBM gbm_model.json). "
              f"Default: {LOGREG_MODEL_PATH}",
     )
+    app.add_argument(
+        "--projection-mode",
+        choices=["orthologous", "best-chain"],
+        default="orthologous",
+        help="How to pick the query search space. 'orthologous' (default): only "
+             "chains the ncRNA-orthology classifier labels ORTH. 'best-chain': the "
+             "top-K score-ranked chains per transcript regardless of orthology label "
+             "-- more sensitive at deep divergence where the classifier over-filters "
+             "(e.g. marsupial/opossum), at the cost of a larger search space.",
+    )
+    app.add_argument(
+        "--best-chain-topk",
+        type=int,
+        default=1,
+        help="best-chain mode: number of top-scoring chains kept per transcript "
+             "(lowest chain id = highest score). Default 1.",
+    )
 
     if len(sys.argv) == 1:
         app.print_help()
@@ -419,6 +436,8 @@ def run_toga_mini(
     out_orthologous_regions_mapping: str,
     out_classification_table: str,
     model_path: str = LOGREG_MODEL_PATH,
+    projection_mode: str = "orthologous",
+    best_chain_topk: int = 1,
 ):
     ensure_parent_directory(out_orthologous_regions_mapping)
     ensure_parent_directory(out_classification_table)
@@ -483,13 +502,32 @@ def run_toga_mini(
     classified_df.to_csv(out_classification_table, index=False)
     print(f"{_time_delta(t0)}: Classification table written.")
 
-    print(f"{_time_delta(t0)}: Making orthologous regions mapping...")
-    ortholog_map = (
-        classified_df[classified_df["label"] == ORTH]
-        .groupby("chain_id")["transcript_id"]
-        .apply(list)
-        .to_dict()
-    )
+    if projection_mode == "best-chain":
+        # Relaxed search space: keep the top-K score-ranked chains per transcript
+        # regardless of orthology label. Chain ids are score-ordered (lowest =
+        # highest score), so sorting ascending and taking head(K) per transcript
+        # yields the best chains. Rescues loci the orthology classifier over-filters
+        # at deep divergence; genuinely unaligned loci still fail projection later.
+        print(f"{_time_delta(t0)}: Selecting top-{best_chain_topk} chain(s) per "
+              f"transcript (best-chain mode, orthology filter OFF)...")
+        sel = classified_df.copy()
+        sel["_cid_int"] = pd.to_numeric(sel["chain_id"], errors="coerce")
+        sel = (
+            sel.sort_values("_cid_int", kind="stable")
+            .groupby("transcript_id", sort=False)
+            .head(max(1, best_chain_topk))
+        )
+        ortholog_map = (
+            sel.groupby("chain_id")["transcript_id"].apply(list).to_dict()
+        )
+    else:
+        print(f"{_time_delta(t0)}: Making orthologous regions mapping...")
+        ortholog_map = (
+            classified_df[classified_df["label"] == ORTH]
+            .groupby("chain_id")["transcript_id"]
+            .apply(list)
+            .to_dict()
+        )
     pairs_to_q_intervals = map_orthologs(ortholog_map, chains, transcripts)
     write_orthologous_regions(pairs_to_q_intervals, chains, transcripts, out_orthologous_regions_mapping)
     print(f"{_time_delta(t0)}: Orthologous regions mapping written.")
@@ -505,6 +543,8 @@ def main():
         args.out_orthologous_regions_mapping,
         args.out_classification_table,
         args.model_path,
+        projection_mode=args.projection_mode,
+        best_chain_topk=args.best_chain_topk,
     )
 
 

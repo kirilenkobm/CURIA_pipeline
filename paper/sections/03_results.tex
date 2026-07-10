@@ -92,14 +92,13 @@ additional structure beyond raw sequence identity in this regime.
 
 \begin{figure}[t]
   \centering
-  % TODO(fig4): regenerate with RiNALMo. Short-ncRNA metric is still MMD, but
-  % values/distributions shift; the seq-identity-vs-MMD panel will differ.
-  \includegraphics[width=\linewidth]{fig4_mmd.png}
-  \caption{Behavior of embedding-based similarity across short ncRNA loci.
-  \textbf{(A)} Sequence identity versus similarity score for matched loci.
-  \textbf{(B)} Annotation agreement as a function of the score. \textbf{(C)}
-  Distribution of scores across ncRNA biotypes. \emph{[TODO: regenerate with
-  RiNALMo; short-ncRNA score is MMD.]}}
+  \includegraphics[width=\linewidth]{fig4_mmd.pdf}
+  \caption{Behavior of embedding-based similarity (MMD) across short ncRNA loci
+  for the human--mouse pair. \textbf{(A)} Sequence identity versus MMD for matched
+  loci (strongly anticorrelated). \textbf{(B)} MMD distributions for loci that do
+  versus do not overlap mouse annotation: annotation-overlapping loci concentrate
+  at low MMD, non-overlapping loci shift higher. \textbf{(C)} MMD distribution by
+  ncRNA biotype, ordered by median.}
   \label{fig:mmd}
 \end{figure}
 
@@ -149,12 +148,15 @@ model, consistent high-confidence matches were rare, indicating that recurrent
 cores are unlikely to arise from random similarity within syntenic regions.
 
 \subsection{Candidate conserved regions absent from current annotations}
-% TODO(rinalmo): regenerate the ~700 count and the conserved-cores file.
+% TODO(rinalmo): regenerate the ~700 count once the full 10-species panel is
+% rerun (analysis/make_conserved_cores.py writes the TSV linked below).
 After excluding regions overlapping or proximal to protein-coding genes, we
 identify approximately 700 candidate conserved intergenic lncRNA loci exhibiting
 consistent embedding-space similarity across $\geq 9$ species. The full set of
-loci is available in the repository
-(\nolinkurl{preprint_results/lncRNAs_with_conserved_cores.txt}). These loci
+loci (all conservation categories) is provided as a supplementary table in the
+repository:
+\url{https://github.com/kirilenkobm/CURIA_pipeline/blob/master/preprint_results/lncRNAs_with_conserved_cores.tsv}.
+These loci
 represent candidate elements and may include false positives despite filtering.
 The persistence of these loci after filtering suggests that the observed signal is
 unlikely to be primarily driven by coding-associated conservation, although
@@ -190,11 +192,11 @@ the most similar segment within the syntenic region.
   \centering
   % TODO(fig6): REDRAW from RiNALMo results. Heatmap color scale becomes
   % cosine-SW distance (d=1/(1+score)), not MMD; matrices will differ.
-  \includegraphics[width=\linewidth]{fig6_cores.png}
+  \includegraphics[width=\linewidth]{fig6_cores.pdf}
   \caption{Modular and heterogeneous cross-species correspondence of lncRNA cores.
   \textbf{(A)} Cross-species matching of core regions for representative lncRNAs
-  (NORAD, PVT1, FIRRE); rows are species, columns are reference cores ordered along
-  the transcript, color indicates match distance. \textbf{(B)} Distribution of
+  (NEAT1, MIAT, MALAT1, XIST, NORAD); rows are species, columns are reference cores ordered along
+  the transcript, color indicates match distance (cosine-SW distance $d=1/(1+s)$). \textbf{(B)} Distribution of
   core reproducibility across species. \textbf{(C)} Median island-level match
   distance across species, increasing with phylogenetic distance. \emph{[TODO:
   color scale is now cosine-SW distance, not MMD.]}}

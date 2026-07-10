@@ -104,6 +104,24 @@ def parse_args():
         help="RNA foundation model for embeddings (default: rinalmo). "
              "'rnafm' is DEPRECATED and kept only for comparison.",
     )
+    parser.add_argument(
+        "--projection-mode",
+        choices=["orthologous", "best-chain"],
+        default="orthologous",
+        help="Query search-space construction. 'orthologous' (default): only "
+             "chains the ncRNA-orthology classifier accepts. 'best-chain': the top-K "
+             "score-ranked chains per transcript regardless of orthology label. "
+             "RECOMMENDED for deeply diverged queries (e.g. marsupial/opossum), "
+             "where the orthology classifier over-filters real loci; it enlarges the "
+             "search space (slower, more candidate regions) so use it selectively.",
+    )
+    parser.add_argument(
+        "--best-chain-topk",
+        type=int,
+        default=1,
+        help="best-chain mode only: top-scoring chains kept per transcript "
+             "(lowest chain id = best). Default 1.",
+    )
 
     if len(sys.argv) < 2:
         parser.print_help()
@@ -198,6 +216,10 @@ def run_toga_step(
         str(paths.toga_classification),
         "--model-path",
         str(rna_toga_model),
+        "--projection-mode",
+        args.projection_mode,
+        "--best-chain-topk",
+        str(args.best_chain_topk),
     ]
 
     print("RNA TOGA called with:")
@@ -208,6 +230,8 @@ def run_toga_step(
     print(f"  output_regions: {paths.toga_regions}")
     print(f"  output_classification: {paths.toga_classification}")
     print(f"  model ({args.model}): {rna_toga_model}")
+    print(f"  projection_mode: {args.projection_mode}"
+          + (f" (top-{args.best_chain_topk})" if args.projection_mode == "best-chain" else ""))
     print(f"\nRunning command: {' '.join(toga_cmd)}\n")
 
     # Run TOGA in a separate subprocess to isolate native runtimes and avoid segmentation faults.

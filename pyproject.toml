@@ -11,7 +11,8 @@ dependencies = [
                        # (graceful pure-Python fallback if absent, but ~70x slower)
     "pandas>=1.3",
     "tqdm>=4.60",
-    "pyrion>=0.3.1",
+    "pyrion>=0.4.0",  # fixes int32 chain-score overflow that silently
+                      # dropped whole-chromosome chains (score > INT_MAX)
     # torch>=2.1 for a solid torch.nn.functional.scaled_dot_product_attention (SDPA).
     # RiNALMo attention uses SDPA -> memory-efficient/flash kernels on CUDA, O(L) memory,
     # so NO flash_attn package or CUDA build is required (works on CPU/MPS/CUDA alike).

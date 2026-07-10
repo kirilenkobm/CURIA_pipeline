@@ -368,41 +368,330 @@ def fig3(outdir: Path, results_dir: Optional[Path]) -> None:
 # =====================================================================
 # Figure 4 --- MMD behaviour across short ncRNA loci (3 panels)
 # Source: figure_mmd_validation_3panel.pdf / MMD_vs_seqID_short_ncRNA.pdf
-# Short-ncRNA metric is still MMD; swap model, same claims, new numbers.
+# Short-ncRNA metric is still MMD (short_ncrna._compute_mmd_with_ref); swap
+# model, same claims, new numbers. Data: analysis/compute_fig4_data.py
+# (rinalmo_version_outputs/hg38_vs_mm39) -> analysis/data/fig4_mmd.npz.
 # =====================================================================
+_FIG4_CACHE = Path(__file__).resolve().parent / "data" / "fig4_mmd.npz"
+
+# Short biotype labels + display order (rare biotypes fold into "other").
+_BIOTYPE_LABEL = {
+    "snoRNA": "snoRNA", "tRNA": "tRNA", "miRNA": "miRNA", "lncRNA": "lncRNA",
+    "snRNA": "snRNA", "misc_RNA": "misc_RNA", "rRNA": "rRNA",
+    "scaRNA": "scaRNA", "vault_RNA": "vaultRNA",
+}
+
+
+def _fig4_seqid(ax, seqid, mmd):
+    """Panel A: sequence identity (%) vs MMD scatter."""
+    ax.scatter(seqid, mmd, s=7, alpha=0.28, linewidths=0, color="#7a9cc0")
+    ax.set_xlabel("Sequence identity (%)")
+    ax.set_ylabel("MMD")
+    ax.set_xlim(0, 100)
+    ax.set_ylim(bottom=0)
+
+
+def _fig4_overlap(ax, mmd, any_ov, over50):
+    """Panel B: MMD distributions for loci that do vs do not overlap annotation.
+
+    The paper claim (Results 3.3) is that annotation-overlapping loci are enriched
+    at low MMD while non-overlapping ones shift higher --- shown directly as two
+    overlaid, density-normalized histograms."""
+    hi = float(min(mmd.max(), 0.6))
+    bins = np.linspace(0, hi, 31)
+    ov, no = mmd[any_ov], mmd[~any_ov]
+    ax.hist(ov, bins=bins, density=True, color=fs.PALETTE["accent"], alpha=0.65,
+            label="overlaps annotation")
+    ax.hist(no, bins=bins, density=True, color=fs.PALETTE["mirna"], alpha=0.55,
+            label="no overlap")
+    ax.set_xlabel("MMD")
+    ax.set_ylabel("Density")
+    ax.set_xlim(0, hi)
+    ax.legend(frameon=False, loc="upper right", handletextpad=0.4, fontsize=6.5)
+
+
+def _fig4_biotype(ax, mmd, biotype):
+    """Panel C: MMD distribution by biotype, boxes ordered by median MMD."""
+    lab = np.array([_BIOTYPE_LABEL.get(b, "other") for b in biotype])
+    groups = {}
+    for l, v in zip(lab, mmd):
+        groups.setdefault(l, []).append(v)
+    # keep reasonably-sized groups; order by median (low = well conserved)
+    items = [(k, np.asarray(v)) for k, v in groups.items() if len(v) >= 8]
+    items.sort(key=lambda kv: np.median(kv[1]))
+    names = [k for k, _ in items]
+    data = [v for _, v in items]
+    pos = np.arange(1, len(data) + 1)
+    bp = ax.boxplot(data, positions=pos, vert=False, widths=0.6, showfliers=False,
+                    patch_artist=True, medianprops=dict(color="black", lw=1.2),
+                    zorder=3)
+    for patch in bp["boxes"]:
+        patch.set(facecolor=fs.PALETTE["signal"], alpha=0.55, linewidth=0.6, zorder=3)
+    for whisk in bp["whiskers"] + bp["caps"]:
+        whisk.set(color=fs.PALETTE["muted"], linewidth=0.8)
+    # A median marker per biotype keeps degenerate distributions (e.g. tRNA,
+    # median ~ 0, box collapsed at the axis) visibly represented.
+    med = [float(np.median(d)) for d in data]
+    ax.scatter(med, pos, s=16, color=fs.PALETTE["accent"], zorder=5,
+               edgecolor="white", linewidths=0.5)
+    ax.set_yticks(pos)
+    ax.set_yticklabels([f"{n} ({len(d)})" for n, d in zip(names, data)], fontsize=6.5)
+    ax.set_ylim(0.4, len(data) + 0.6)
+    ax.set_xlabel("MMD")
+    ax.set_xlim(left=-0.01)
+
+
 @figure("fig4_mmd")
 def fig4(outdir: Path, results_dir: Optional[Path]) -> None:
     fs.set_style()
-    fig, axd = fs.mosaic("ABC", width=fs.FULL_WIDTH, height=2.4)
-    _todo(axd["A"], "A: seq identity vs MMD\n(anticorrelated; spread at 45-60%)")
-    _todo(axd["B"], "B: annotation agreement vs MMD")
-    _todo(axd["C"], "C: MMD by biotype (violin/box)")
+    fig, axd = fs.mosaic("ABC", width=fs.FULL_WIDTH, height=2.7)
+    if _FIG4_CACHE.exists():
+        d = np.load(_FIG4_CACHE, allow_pickle=False)
+        _fig4_seqid(axd["A"], d["A_seqid"], d["A_mmd"])
+        _fig4_overlap(axd["B"], d["B_mmd"], d["B_any"], d["B_over50"])
+        _fig4_biotype(axd["C"], d["C_mmd"], d["C_biotype"])
+        axd["A"].set_title("Identity vs MMD", loc="left")
+        axd["B"].set_title("Annotation agreement", loc="left")
+        axd["C"].set_title("MMD by biotype", loc="left")
+    else:
+        _todo(axd["A"], "run analysis/compute_fig4_data.py\n(seq identity vs MMD)")
+        _todo(axd["B"], "annotation agreement vs MMD")
+        _todo(axd["C"], "MMD by biotype (box)")
     for k in "ABC":
-        fs.panel_label(axd[k], k, dx=-0.18)
+        fs.panel_label(axd[k], k, dx=-0.18, dy=1.20)
     fs.save(fig, outdir / "fig4_mmd.pdf")
     print(f"wrote {outdir/'fig4_mmd.pdf'}")
 
 
 # =====================================================================
-# Figure 6 --- lncRNA cores (3 panels); redo with results tomorrow.
-# color scale becomes cosine-SW distance d=1/(1+score), NOT MMD.
-# Source: island_phylo_conservation.ipynb, core_reproducibility_cumulative.pdf,
-# MMD_per_species_phylo.pdf
+# Figure 6 --- lncRNA cores (3 panels), multi-species.
+# The island matcher reports cosine-SW distance d = 1/(1+score) (NOT MMD;
+# see modules/pipeline/matchers/rinalmo.py), carried in the legacy-named
+# `diag_mmd` column of island_alignment_results.tsv.
+# Auto-detects available hg38_vs_* pairs so re-running once rheMac10/rn7/
+# susScr11 (and dasNov3) land extends the figure to N=10 with no edit.
+# Source: preprint__deprecated/island_phylo_conservation.ipynb.
 # =====================================================================
+# name / clade / divergence-from-human (Mya). Verbatim from the deprecated
+# island_phylo_conservation notebook (cell 3).
+_SPECIES_META = {
+    "rheMac10": {"name": "Rhesus", "clade": "Euarchontoglires", "div_mya": 25},
+    "mm39":     {"name": "Mouse",          "clade": "Euarchontoglires", "div_mya": 90},
+    "rn7":      {"name": "Rat",            "clade": "Euarchontoglires", "div_mya": 90},
+    "bosTau9":  {"name": "Cow",            "clade": "Laurasiatheria",   "div_mya": 94},
+    "susScr11": {"name": "Pig",            "clade": "Laurasiatheria",   "div_mya": 94},
+    "equCab3":  {"name": "Horse",          "clade": "Laurasiatheria",   "div_mya": 94},
+    "felCat9":  {"name": "Cat",            "clade": "Laurasiatheria",   "div_mya": 94},
+    "eriEur2":  {"name": "Hedgehog",       "clade": "Laurasiatheria",   "div_mya": 94},
+    "dasNov3":  {"name": "Armadillo",      "clade": "Xenarthra",        "div_mya": 105},
+    "monDom5":  {"name": "Opossum",        "clade": "Marsupialia",      "div_mya": 180},
+}
+_PHYLO_ORDER = ["rheMac10", "mm39", "rn7", "bosTau9", "susScr11",
+                "equCab3", "felCat9", "eriEur2", "dasNov3", "monDom5"]
+
+# Fig 6A representative lncRNAs (bare ENSG, versionless). Famous nuclear/
+# regulatory lncRNAs spanning a modularity gradient: NEAT1 (many modular cores),
+# MIAT (broad, all species), MALAT1 (few, strongest matches), XIST (X-inactivation),
+# NORAD (single conserved core).
+_FIG6A_GENES = [("NEAT1",  "ENSG00000245532"),
+                ("MIAT",   "ENSG00000225783"),
+                ("MALAT1", "ENSG00000251562"),
+                ("XIST",   "ENSG00000229807"),
+                ("NORAD",  "ENSG00000260032")]
+
+_DIST_LABEL = "cosine-SW distance  $d = 1/(1{+}s)$"
+_DIST_VMIN, _DIST_VMAX = 0.0, 0.10   # diag_mmd is capped at the matcher ceiling
+
+
+def _load_islands(results_dir: Path):
+    """Concatenate island_alignment_results.tsv for every hg38_vs_<sp> pair that
+    exists on disk (auto-detect), tagged with species + divergence time.
+
+    Returns (dataframe, species_present_in_phylo_order)."""
+    import pandas as pd
+    frames, present = [], []
+    for sp in _PHYLO_ORDER:
+        tsv = results_dir / f"hg38_vs_{sp}" / "island_alignment_results.tsv"
+        if not tsv.exists():
+            continue
+        df = pd.read_csv(tsv, sep="\t")
+        if df.empty:
+            continue
+        df["species"] = sp
+        df["div_mya"] = _SPECIES_META[sp]["div_mya"]
+        # bare, versionless gene id (U_ENSG00000260032.3 -> ENSG00000260032)
+        df["gene_bare"] = df["gene_id"].str.extract(r"(ENSG\d+)", expand=False)
+        frames.append(df)
+        present.append(sp)
+    if not frames:
+        return None, []
+    return pd.concat(frames, ignore_index=True), present
+
+
+def _cluster_cores(df):
+    """Cluster reference islands into cross-species 'cores' by genomic overlap.
+
+    Reference island IDs (R0, R1, ...) are NOT consistent across species runs
+    (the numbering depends on which islands that query recovered), but the
+    reference coordinates are the shared anchor. Within each gene, merge
+    overlapping (ref_start, ref_end) intervals across all species into a core and
+    label each island row with its core_id and the core's reference start (for
+    left-to-right column ordering)."""
+    core_id = np.empty(len(df), dtype=object)
+    core_start = np.zeros(len(df), dtype=np.int64)
+    for _, idx in df.groupby("gene_id").groups.items():
+        rows = df.loc[idx, ["ref_start", "ref_end"]].to_numpy()
+        order = np.argsort(rows[:, 0])
+        cur_end, cid, cstart = -1, -1, 0
+        for pos in order:
+            s, e = int(rows[pos, 0]), int(rows[pos, 1])
+            if s >= cur_end:          # no overlap with the open cluster -> new core
+                cid += 1
+                cstart = s
+                cur_end = e
+            else:
+                cur_end = max(cur_end, e)
+            ridx = idx[pos]
+            gene = df.at[ridx, "gene_id"]
+            core_id[df.index.get_loc(ridx)] = f"{gene}_C{cid}"
+            core_start[df.index.get_loc(ridx)] = cstart
+    df = df.copy()
+    df["core_id"] = core_id
+    df["core_start"] = core_start
+    return df
+
+
+def _best_per_core_species(df):
+    """Lowest (best) distance per (core, species)."""
+    return (df.sort_values("diag_mmd")
+              .drop_duplicates(subset=["core_id", "species"], keep="first"))
+
+
+def _fig6a_heatmap(ax, best, gene_bare, gene_sym, present, cmap, show_ylabels):
+    """One gene: rows = species (phylo order), cols = cores (ref order), color =
+    cosine-SW distance; missing (core, species) left grey."""
+    import pandas as pd
+    g = best[best["gene_bare"] == gene_bare]
+    if g.empty:
+        _todo(ax, f"{gene_sym}\n(no islands)")
+        return None
+    cores = (g.drop_duplicates("core_id").sort_values("core_start")["core_id"].tolist())
+    piv = (g.pivot_table(index="species", columns="core_id", values="diag_mmd",
+                         aggfunc="min")
+            .reindex(index=present, columns=cores))
+    arr = np.ma.masked_invalid(piv.to_numpy(dtype=float))
+    cmap = cmap.copy(); cmap.set_bad("#e6e6e6")
+    im = ax.imshow(arr, aspect="auto", cmap=cmap, vmin=_DIST_VMIN, vmax=_DIST_VMAX)
+    # per-core "C#" labels crowd once there are many cores -> label sparsely then.
+    n = len(cores)
+    if n <= 8:
+        ax.set_xticks(range(n))
+        ax.set_xticklabels([f"C{c.rsplit('_C', 1)[-1]}" for c in cores], fontsize=6)
+    else:
+        step = int(np.ceil(n / 6))
+        ticks = list(range(0, n, step))
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([str(t) for t in ticks], fontsize=6)
+    ax.set_xlabel("core", fontsize=6.5)
+    ax.set_yticks(range(len(present)))
+    if show_ylabels:
+        ax.set_yticklabels([_SPECIES_META[s]["name"] for s in present], fontsize=6.5)
+    else:
+        ax.set_yticklabels([])
+    ax.set_title(gene_sym, loc="center", fontsize=8, fontweight="bold")
+    ax.tick_params(length=0)
+    return im
+
+
+def _fig6b_reproducibility(ax, best, n_species):
+    """Fraction of cores matched in >= k species (k = 1..N)."""
+    per_core = best.groupby("core_id")["species"].nunique()
+    total = len(per_core)
+    ks = np.arange(1, n_species + 1)
+    frac = np.array([(per_core >= k).mean() for k in ks])
+    ax.bar(ks, frac, color=fs.PALETTE["signal"], edgecolor="white", width=0.75)
+    for k, f in zip(ks, frac):
+        n = int((per_core >= k).sum())
+        ax.text(k, f + 0.015, f"{n}", ha="center", va="bottom", fontsize=5.5)
+    ax.set_xticks(ks)
+    ax.set_xticklabels([f"$\\geq${k}" for k in ks], fontsize=6.5)
+    ax.set_xlabel(f"Species with a match (of {n_species})")
+    ax.set_ylabel("Fraction of cores")
+    ax.set_ylim(0, 1.12)
+    ax.text(0.97, 0.95, f"{total:,} cores", transform=ax.transAxes,
+            ha="right", va="top", fontsize=6.5)
+
+
+def _fig6c_phylo(ax, df, present):
+    """Median cosine-SW distance per species vs divergence time (median +/- IQR),
+    in phylogenetic order."""
+    stat = (df.groupby("species")["diag_mmd"]
+              .agg(median="median", q25=lambda x: x.quantile(0.25),
+                   q75=lambda x: x.quantile(0.75))
+              .reindex(present))
+    x = np.arange(len(present))
+    lo = (stat["median"] - stat["q25"]).to_numpy()
+    hi = (stat["q75"] - stat["median"]).to_numpy()
+    ax.errorbar(x, stat["median"].to_numpy(), yerr=[lo, hi], fmt="o-",
+                color=fs.PALETTE["accent"], ecolor=fs.PALETTE["muted"],
+                capsize=3, ms=5, lw=1.4, elinewidth=1.0,
+                markerfacecolor=fs.PALETTE["accent"], markeredgecolor="white",
+                markeredgewidth=0.6)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{_SPECIES_META[s]['name']}\n({_SPECIES_META[s]['div_mya']} My)"
+                        for s in present], fontsize=6, rotation=0)
+    ax.set_ylabel("Median cosine-SW distance")
+    ax.set_ylim(bottom=0)
+
+
 @figure("fig6_cores")
 def fig6(outdir: Path, results_dir: Optional[Path]) -> None:
+    import matplotlib.pyplot as plt
     fs.set_style()
-    fig, axd = fs.mosaic("""
-        AA
-        BC
-    """, width=fs.FULL_WIDTH, height=5.0)
-    _todo(axd["A"], "A: per-gene core x species heatmaps (NORAD, PVT1, FIRRE)\ncolor = cosine-SW distance")
-    _todo(axd["B"], "B: core reproducibility (fraction in >=k species)")
-    _todo(axd["C"], "C: median island distance vs phylo distance")
-    for k, lab in [("A", "A"), ("B", "B"), ("C", "C")]:
-        fs.panel_label(axd[k], lab)
+    rdir = results_dir or (Path(__file__).resolve().parents[1] / "rinalmo_version_outputs")
+    df, present = _load_islands(rdir)
+
+    # Explicit gridspec (not mosaic) so Panel A's inter-heatmap gap is tight and
+    # the number of example genes can scale freely.
+    ng = len(_FIG6A_GENES)
+    fig = plt.figure(figsize=(fs.FULL_WIDTH, 5.4), layout="constrained")
+    gs = fig.add_gridspec(2, 1, height_ratios=[1.05, 1.0], hspace=0.14)
+    gsA = gs[0].subgridspec(1, ng, wspace=0.06)
+    axesA = [fig.add_subplot(gsA[0, i]) for i in range(ng)]
+    gsBC = gs[1].subgridspec(1, 2, width_ratios=[1.0, 1.0], wspace=0.28)
+    axB = fig.add_subplot(gsBC[0, 0])
+    axC = fig.add_subplot(gsBC[0, 1])
+
+    if df is None:
+        for ax in axesA:
+            _todo(ax, f"no island results\nunder {rdir}")
+        _todo(axB, "core reproducibility"); _todo(axC, "distance vs phylo")
+        fs.panel_label(axesA[0], "A"); fs.panel_label(axB, "B"); fs.panel_label(axC, "C")
+        fs.save(fig, outdir / "fig6_cores.pdf")
+        print(f"wrote {outdir/'fig6_cores.pdf'} (stub: no data)")
+        return
+
+    df = _cluster_cores(df)
+    best = _best_per_core_species(df)
+    cmap = plt.cm.viridis_r
+
+    # Panel A: per-gene heatmaps sharing one colour scale/bar; y labels only on
+    # the leftmost so the panels sit close together as one strip.
+    im = None
+    for i, ((sym, ens), ax) in enumerate(zip(_FIG6A_GENES, axesA)):
+        r = _fig6a_heatmap(ax, best, ens, sym, present, cmap, show_ylabels=(i == 0))
+        im = im or r
+    if im is not None:
+        fig.colorbar(im, ax=axesA, shrink=0.85, pad=0.01, label=_DIST_LABEL)
+
+    _fig6b_reproducibility(axB, best, len(present))
+    _fig6c_phylo(axC, df, present)
+
+    fs.panel_label(axesA[0], "A", dx=-0.55)
+    fs.panel_label(axB, "B", dx=-0.14)
+    fs.panel_label(axC, "C", dx=-0.12)
     fs.save(fig, outdir / "fig6_cores.pdf")
-    print(f"wrote {outdir/'fig6_cores.pdf'}")
+    print(f"wrote {outdir/'fig6_cores.pdf'} ({len(present)} species: {', '.join(present)})")
 
 
 def main() -> None:

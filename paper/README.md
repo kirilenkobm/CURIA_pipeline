@@ -13,7 +13,27 @@ paper/
 analysis/
   make_figures.py       # writes figures/*.pdf
   make_tables.py        # writes tables/*.tex
+  make_conserved_cores.py  # writes ../preprint_results/lncRNAs_with_conserved_cores.tsv
 ```
+
+## Supplementary conserved-cores table
+
+The list of lncRNAs carrying conserved cores across the panel is large (~10^3
+rows), so the paper only **links** to the repo copy rather than inlining it.
+Regenerate it from a run with:
+
+```bash
+make cores PYTHON=../.venv/bin/python           # from paper/
+# or directly, from repo root:
+.venv/bin/python analysis/make_conserved_cores.py --results-dir rinalmo_version_outputs
+```
+
+It reuses Figure 6's core definition (`make_figures._load_islands` /
+`_cluster_cores`) and classifies each gene by proximity to protein-coding loci
+(intergenic / near-coding ±5 kb / antisense / sense-overlapping). Criteria are
+CLI-tunable (`--min-species`, `--min-len`, `--max-dist`); the default requires a
+core in `N_species − 1` species. The "~700 intergenic" figure in the text is the
+intergenic subset once the full 10-species panel is rerun.
 
 ## Build
 
