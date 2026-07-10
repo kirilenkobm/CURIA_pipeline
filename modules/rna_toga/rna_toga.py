@@ -392,10 +392,10 @@ def parse_args():
         choices=["orthologous", "best-chain"],
         default="orthologous",
         help="How to pick the query search space. 'orthologous' (default): only "
-             "chains the ncRNA-orthology classifier labels ORTH. 'best-chain': the "
-             "top-K score-ranked chains per transcript regardless of orthology label "
-             "-- more sensitive at deep divergence where the classifier over-filters "
-             "(e.g. marsupial/opossum), at the cost of a larger search space.",
+             "chains the ncRNA-orthology classifier labels ORTH. 'best-chain': keep "
+             "all ORTH calls as-is AND add the top-K score-ranked chains for "
+             "non-ORTH (PARA/SPAN) transcripts -- rescues deep-divergence false "
+             "negatives (e.g. marsupial/opossum) without changing ORTH loci.",
     )
     app.add_argument(
         "--best-chain-topk",
@@ -503,22 +503,29 @@ def run_toga_mini(
     print(f"{_time_delta(t0)}: Classification table written.")
 
     if projection_mode == "best-chain":
-        # Relaxed search space: keep the top-K score-ranked chains per transcript
-        # regardless of orthology label. Chain ids are score-ordered (lowest =
-        # highest score), so sorting ascending and taking head(K) per transcript
-        # yields the best chains. Rescues loci the orthology classifier over-filters
-        # at deep divergence; genuinely unaligned loci still fail projection later.
-        print(f"{_time_delta(t0)}: Selecting top-{best_chain_topk} chain(s) per "
-              f"transcript (best-chain mode, orthology filter OFF)...")
-        sel = classified_df.copy()
-        sel["_cid_int"] = pd.to_numeric(sel["chain_id"], errors="coerce")
-        sel = (
-            sel.sort_values("_cid_int", kind="stable")
+        # Hybrid relaxed search space: keep every ORTH call exactly as the
+        # classifier assigns it (identical to the default mode), and ADD the top-K
+        # score-ranked chains ONLY for transcripts the model did not call ORTH
+        # (PARA / SPAN / ...). This rescues deep-divergence false negatives
+        # (e.g. MALAT1 labeled PARA despite strong chain coverage) without
+        # perturbing confidently-orthologous loci. Chain ids are score-ordered
+        # (lowest = best), so head(K) after ascending sort takes the best chains.
+        # Genuinely unaligned loci still fail projection later -> nothing fabricated.
+        orth = classified_df[classified_df["label"] == ORTH]
+        orth_tids = set(orth["transcript_id"])
+        rest = classified_df[~classified_df["transcript_id"].isin(orth_tids)].copy()
+        rest["_cid_int"] = pd.to_numeric(rest["chain_id"], errors="coerce")
+        rest = (
+            rest.sort_values("_cid_int", kind="stable")
             .groupby("transcript_id", sort=False)
             .head(max(1, best_chain_topk))
         )
+        print(f"{_time_delta(t0)}: best-chain mode: {len(orth_tids)} ORTH kept as-is"
+              f" + top-{best_chain_topk} chain(s) for {rest['transcript_id'].nunique()}"
+              f" non-ORTH transcripts...")
+        combined = pd.concat([orth, rest], ignore_index=True)
         ortholog_map = (
-            sel.groupby("chain_id")["transcript_id"].apply(list).to_dict()
+            combined.groupby("chain_id")["transcript_id"].apply(list).to_dict()
         )
     else:
         print(f"{_time_delta(t0)}: Making orthologous regions mapping...")

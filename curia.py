@@ -109,11 +109,11 @@ def parse_args():
         choices=["orthologous", "best-chain"],
         default="orthologous",
         help="Query search-space construction. 'orthologous' (default): only "
-             "chains the ncRNA-orthology classifier accepts. 'best-chain': the top-K "
-             "score-ranked chains per transcript regardless of orthology label. "
-             "RECOMMENDED for deeply diverged queries (e.g. marsupial/opossum), "
-             "where the orthology classifier over-filters real loci; it enlarges the "
-             "search space (slower, more candidate regions) so use it selectively.",
+             "chains the ncRNA-orthology classifier accepts. 'best-chain': keep all "
+             "ORTH calls as-is AND add the top-K best chains for non-ORTH (PARA/SPAN) "
+             "transcripts. RECOMMENDED for deeply diverged queries (e.g. marsupial/"
+             "opossum) where the classifier over-filters real loci; ORTH loci are "
+             "unchanged, only non-ORTH get the extra fallback.",
     )
     parser.add_argument(
         "--best-chain-topk",
