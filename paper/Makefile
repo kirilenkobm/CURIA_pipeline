@@ -29,9 +29,9 @@ tables:
 	$(PYTHON) $(ANALYSIS)/make_tables.py --outdir tables
 
 # Supplementary conserved-cores TSV (large; linked from the paper, not inlined).
-# Writes ../preprint_results/lncRNAs_with_conserved_cores.tsv from the run panel.
+# Writes lncRNAs_with_conserved_cores.tsv (in paper/) from the run panel.
 cores:
-	$(PYTHON) $(ANALYSIS)/make_conserved_cores.py --results-dir ../rinalmo_version_outputs
+	$(PYTHON) $(ANALYSIS)/make_conserved_cores.py --results-dir ../rinalmo_version_outputs --out lncRNAs_with_conserved_cores.tsv
 
 watch:
 	latexmk -pdf -pvc -interaction=nonstopmode $(MAIN).tex

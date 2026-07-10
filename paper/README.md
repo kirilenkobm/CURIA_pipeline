@@ -13,7 +13,7 @@ paper/
 analysis/
   make_figures.py       # writes figures/*.pdf
   make_tables.py        # writes tables/*.tex
-  make_conserved_cores.py  # writes ../preprint_results/lncRNAs_with_conserved_cores.tsv
+  make_conserved_cores.py  # writes paper/lncRNAs_with_conserved_cores.tsv
 ```
 
 ## Supplementary conserved-cores table
@@ -23,9 +23,10 @@ rows), so the paper only **links** to the repo copy rather than inlining it.
 Regenerate it from a run with:
 
 ```bash
-make cores PYTHON=../.venv/bin/python           # from paper/
+make cores PYTHON=../.venv/bin/python           # from paper/ -> paper/lncRNAs_with_conserved_cores.tsv
 # or directly, from repo root:
-.venv/bin/python analysis/make_conserved_cores.py --results-dir rinalmo_version_outputs
+.venv/bin/python analysis/make_conserved_cores.py --results-dir rinalmo_version_outputs \
+    --out paper/lncRNAs_with_conserved_cores.tsv
 ```
 
 It reuses Figure 6's core definition (`make_figures._load_islands` /
