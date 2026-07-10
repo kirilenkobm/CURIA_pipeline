@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 import json
+from datetime import datetime
 from pathlib import Path
 
 # Make GPU executor importable when running from repo root
@@ -34,6 +35,7 @@ from modules.model_registry import get_logreg_path, get_island_scan_params, get_
 from modules.utils.preflight import validate_model_artifacts, preflight_embedding_check
 from modules.utils.chrom_sizes import write_chrom_sizes_from_2bit
 from modules.utils.output_paths import OutputPaths
+from modules.utils.tee_log import TeeLogger
 from modules.converters.union_transcript import collapse_to_union_transcripts
 from modules.converters.short_ncrna_bed import write_short_ncrna_bed, write_short_ncrna_tsv
 from modules.converters.island_alignment_bed import write_island_alignment_beds
@@ -73,6 +75,12 @@ def parse_args():
     parser.add_argument("--cpu-max-workers", type=int, default=128, help="Max concurrent CPU workers for all pipeline steps")
     parser.add_argument("--gpu-logger", action="store_true", help="Enable GPU utilization logging every 3s")
     parser.add_argument("--output-dir", required=True, help="Output directory")
+    parser.add_argument(
+        "--no-log-file",
+        action="store_true",
+        help="Disable writing a copy of all console output to a timestamped "
+             "curia_*.log file in the output directory (logging is on by default).",
+    )
     parser.add_argument(
         "--skip-completed",
         action="store_true",
@@ -291,12 +299,40 @@ def run_reference_islands_step(
     return ref_islands_json
 
 
+def start_tee_logger(output_dir):
+    """Tee all console output to a timestamped log in the output dir.
+
+    Set up before the GPU executor and preflight so their output is captured too.
+    Returns the started TeeLogger.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = output_dir / f"curia_{stamp}.log"
+    tee = TeeLogger(log_path).start()
+
+    # Refresh a stable "latest" symlink for easy `tail -f`.
+    latest = output_dir / "curia_latest.log"
+    try:
+        if latest.exists() or latest.is_symlink():
+            latest.unlink()
+        latest.symlink_to(log_path.name)
+    except OSError:
+        pass
+
+    print(f"# Logging console output to: {log_path}")
+    print(f"# Run started {stamp} | argv: {' '.join(sys.argv)}")
+    return tee
+
+
 def main():
     t0 = time.time()
     args = parse_args()
     proc = None
     input_q = None
     output_q = None
+
+    output_dir = Path(args.output_dir)
+    tee = None if args.no_log_file else start_tee_logger(output_dir)
 
     # Signal handler: idempotent + guaranteed exit. A second Ctrl-C dies immediately,
     # and os._exit bypasses mp.Queue feeder threads that can otherwise trap the process.
@@ -310,6 +346,8 @@ def main():
         try:
             shutdown_gpu_executor(proc, input_q, output_q)
         finally:
+            if tee is not None:
+                tee.flush()  # per-line flushing means little is lost even here
             os._exit(130)  # guarantee exit even if a queue thread would hang
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -341,7 +379,6 @@ def main():
 
         print("# Starting GPU executor...")
         proc, input_q, output_q = start_gpu_executor(args)
-        output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         paths = OutputPaths(output_dir)
 
@@ -587,6 +624,9 @@ def main():
         print(f"# Total pipeline wall time: {hours:02d}:{minutes:02d}:{seconds:02d} ({elapsed:.1f}s)")
         print("Shutting down GPU executor...")
         shutdown_gpu_executor(proc, input_q, output_q)
+        if tee is not None:
+            # Stop after the executor exits so its shutdown output is captured too.
+            tee.stop()
 
 
 if __name__ == "__main__":
