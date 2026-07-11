@@ -37,19 +37,31 @@ GPU_MAX_TOKENS=${GPU_MAX_TOKENS:-196608}
 GPU_MIN_BATCH=${GPU_MIN_BATCH:-32}
 CPU_WORKERS=${CPU_WORKERS:-256}             # = host thread count (EPYC 7713P: 256)
 
-# ---- default panel (20-ish, edit freely) ----------------------------------
+# ---- panel source ----------------------------------------------------------
+# Priority: CLI args > paper/species_panel.txt > built-in fallback.
 # Marsupials use hybrid best-chain projection (classifier over-filters at 180 My).
-PANEL_DEFAULT=(
-  gorGor6 rheMac10                          # Primates
-  mm39 rn7 HLoryCun3                        # Glires
-  bosTau9 susScr11 HLturTru5 equCab3 felCat9 HLmyoMyo6 HLpteVam2 eriEur2  # Laurasiatheria
-  dasNov3                                   # Xenarthra
-  HLeleMax1 HLproCap4                       # Afrotheria
-  monDom5 HLnotEug3                         # Marsupials (best-chain)
+PANEL_FILE=${PANEL_FILE:-paper/species_panel.txt}
+PANEL_FALLBACK=(
+  gorGor6 rheMac10 mm39 rn7 HLoryCun3 bosTau9 susScr11 equCab3 felCat9
+  eriEur2 HLpteVam2 dasNov3 HLeleMax1 monDom5 HLnotEug3
 )
-MARSUPIALS=" monDom5 HLdidVir1 HLnotEug3 HLmonDom "
+MARSUPIALS=" monDom5 HLdidVir1 HLnotEug3 "
 
-if [ "$#" -gt 0 ]; then PANEL=("$@"); else PANEL=("${PANEL_DEFAULT[@]}"); fi
+if [ "$#" -gt 0 ]; then
+  PANEL=("$@")
+elif [ -f "$PANEL_FILE" ]; then
+  PANEL=()
+  while read -r sp || [ -n "$sp" ]; do
+    sp="${sp%%[[:space:]]}"; [ -n "$sp" ] && [ "${sp#\#}" = "$sp" ] && PANEL+=("$sp")
+  done < "$PANEL_FILE"
+  echo "# Panel from $PANEL_FILE"
+else
+  PANEL=("${PANEL_FALLBACK[@]}")
+fi
+
+# Chain<->2bit name mismatches (e.g. HLoryCun3: accession '.1' suffix) are
+# auto-normalized at startup instead of failing 16 min in.
+AUTO_FIX=${AUTO_FIX:---auto-fix-chrom-names}
 
 echo "# Panel (${#PANEL[@]}): ${PANEL[*]}"
 echo "# GPU: max-batch=$GPU_MAX_BATCH max-tokens=$GPU_MAX_TOKENS  CPU workers=$CPU_WORKERS"
@@ -74,6 +86,7 @@ for sp in "${PANEL[@]}"; do
     --chain "$chain" --ref-2bit "$REF_2BIT" --query-2bit "$qbit" \
     --output-dir "$out" \
     --ref-islands-db "$REF_ISLANDS_DB" \
+    $AUTO_FIX \
     "${proj[@]}" \
     --gpu-max-batch "$GPU_MAX_BATCH" --gpu-min-batch "$GPU_MIN_BATCH" \
     --gpu-max-tokens "$GPU_MAX_TOKENS" --cpu-max-workers "$CPU_WORKERS" \

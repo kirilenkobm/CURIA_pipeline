@@ -123,6 +123,15 @@ def parse_args():
              "(lowest chain id = best). Default 1.",
     )
     parser.add_argument(
+        "--auto-fix-chrom-names",
+        action="store_true",
+        help="If the startup chain<->2bit check finds a naming-convention "
+             "mismatch (accession version suffix, e.g. chain 'VIYN01000001' vs "
+             "2bit 'VIYN01000001.1', or a 'chr' prefix difference), auto-rewrite "
+             "the chain's chromosome names to match the 2bit and continue, instead "
+             "of aborting. Writes a corrected chain into the output dir.",
+    )
+    parser.add_argument(
         "--ref-islands-db",
         default=None,
         help="Persistent reference-island cache (SQLite). Reference island "
@@ -391,12 +400,16 @@ def main():
     try:
         # Validate inputs before starting GPU executor (fail fast)
         try:
-            validate_all_inputs(
+            # Returns the effective chain path — a name-corrected copy when
+            # --auto-fix-chrom-names normalizes a mismatch, else the original.
+            args.chain = validate_all_inputs(
                 args.ref_bed12,
                 args.reference_metadata,
                 args.chain,
                 args.ref_2bit,
                 args.query_2bit,
+                auto_fix_chrom_names=args.auto_fix_chrom_names,
+                work_dir=output_dir,
             )
         except ValidationError as e:
             print(f"\n# INPUT VALIDATION FAILED:\n{e}\n", file=sys.stderr)
