@@ -21,7 +21,7 @@ from make_figures.py so the core definition matches Figure 6 exactly.
 
 Usage:
     python analysis/make_conserved_cores.py \
-        --results-dir rinalmo_version_outputs \
+        --results-dir preprint_results \
         --out preprint_results/lncRNAs_with_conserved_cores.tsv
 """
 from __future__ import annotations
@@ -167,7 +167,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--results-dir", type=Path,
-                    default=REPO / "rinalmo_version_outputs")
+                    default=REPO / "preprint_results")
     ap.add_argument("--out", type=Path,
                     default=REPO / "preprint_results" / "lncRNAs_with_conserved_cores.tsv")
     ap.add_argument("--min-species", type=int, default=None,

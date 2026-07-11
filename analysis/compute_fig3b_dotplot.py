@@ -76,7 +76,7 @@ def _dotplot_sw(A, B, tau, gap):
     S = (An @ Bn.T).astype(np.float64) - tau
     return _sw_dp(S, float(tau), float(gap))
 
-RESULTS = REPO_ROOT / "rinalmo_version_outputs" / "hg38_vs_mm39"
+RESULTS = REPO_ROOT / "preprint_results" / "hg38_vs_mm39"
 REF_2BIT = REPO_ROOT / "input_data" / "2bit" / "hg38.2bit"
 QRY_2BIT = REPO_ROOT / "input_data" / "2bit" / "mm39.2bit"
 PCA16    = REPO_ROOT / "modules" / "global_PCA" / "rinalmo_pca_k16.npz"

@@ -11,7 +11,7 @@ Panel C (MMD by biotype) is cheap and stays in make_figures.py (reads the TSV).
 
 Usage:
     .venv/bin/python analysis/compute_fig4_data.py \
-        --results rinalmo_version_outputs/hg38_vs_mm39 \
+        --results preprint_results/hg38_vs_mm39 \
         --ref-2bit input_data/2bit/hg38.2bit --query-2bit input_data/2bit/mm39.2bit
 """
 from __future__ import annotations
@@ -139,7 +139,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--results", type=Path,
-                    default=REPO / "rinalmo_version_outputs/hg38_vs_mm39")
+                    default=REPO / "preprint_results/hg38_vs_mm39")
     ap.add_argument("--ref-2bit", type=Path, default=REPO / "input_data/2bit/hg38.2bit")
     ap.add_argument("--query-2bit", type=Path, default=REPO / "input_data/2bit/mm39.2bit")
     ap.add_argument("--annotation", type=Path,

@@ -134,6 +134,7 @@ python modules/GPU_executor/benchmark_batch_size.py
   --cpu-max-workers 128 \               # max concurrent async workers (default: 128)
   --gpu-max-batch 160 \                 # max GPU batch size (default: 160, tune with benchmark script)
   --gpu-min-batch 32 \                  # min batch size before timeout (default: 32)
+  --ref-islands-db hg38_ref_islands.db \# optional: reuse reference-island scans across species (see below)
   --no-cleanup                          # optional: keep all intermediate files (SQLite DBs, joblists)
 ```
 
@@ -141,6 +142,24 @@ python modules/GPU_executor/benchmark_batch_size.py
 - `--cpu-max-workers` controls concurrent async I/O workers (not threads), allowing high parallelism for GPU-bound tasks
 - `--gpu-max-batch` sets maximum batch size sent to GPU; use `python modules/GPU_executor/benchmark_batch_size.py` to find optimal value for your hardware
 - `--gpu-min-batch` sets minimum batch size before GPU executor times out and processes incomplete batch
+
+**Running many species against one reference (`--ref-islands-db`):**
+Reference-transcript island scanning is *species-independent* — a transcript's
+islands depend only on its exonic sequence, the model, and the scan parameters,
+not on the query genome. When you align many query species to the same reference,
+pass a shared `--ref-islands-db <path>` (a SQLite file, created if absent): the
+first run populates it, and every subsequent species **restores** already-scanned
+reference transcripts instead of re-embedding them, scanning only the transcripts
+new to its set. "No islands" is cached too. Entries are keyed by model + scan
+parameters + exon blocks, so changing the model/params or the reference annotation
+transparently recomputes. If you run several pipelines **concurrently**, give each
+lane its own DB (`--ref-islands-db lane1.db`, `lane2.db`, …) — one cache per lane.
+
+**Search-space mode (`--projection-mode`):**
+Default `orthologous` uses only chains the ncRNA-orthology classifier accepts.
+`--projection-mode best-chain` additionally keeps the top-scoring chain for
+non-ORTH (PARA/SPAN) transcripts — more sensitive for deeply diverged queries
+(e.g. marsupials) where the classifier over-filters; ORTH loci are unchanged.
 
 ---
 

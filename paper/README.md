@@ -25,7 +25,7 @@ Regenerate it from a run with:
 ```bash
 make cores PYTHON=../.venv/bin/python           # from paper/ -> paper/lncRNAs_with_conserved_cores.tsv
 # or directly, from repo root:
-.venv/bin/python analysis/make_conserved_cores.py --results-dir rinalmo_version_outputs \
+.venv/bin/python analysis/make_conserved_cores.py --results-dir preprint_results \
     --out paper/lncRNAs_with_conserved_cores.tsv
 ```
 
@@ -79,7 +79,7 @@ builder in `analysis/make_figures.py`.
 .venv/bin/python analysis/make_figures.py --outdir paper/figures
 .venv/bin/python analysis/make_figures.py --outdir paper/figures --only fig4_mmd
 # data-dependent panels read from a results dir (plug in the RiNALMo run):
-.venv/bin/python analysis/make_figures.py --outdir paper/figures --results-dir ../rinalmo_version_outputs
+.venv/bin/python analysis/make_figures.py --outdir paper/figures --results-dir ../preprint_results
 ```
 (Or `make figures PYTHON=../.venv/bin/python` from `paper/`.)
 

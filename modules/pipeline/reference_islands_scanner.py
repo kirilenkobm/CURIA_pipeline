@@ -536,14 +536,24 @@ def run_reference_islands_scanner(
     prob_threshold: float = 0.25,
     batch_size: int = 128,
     test_cap_jobs: int = None,
+    cache_db_path: str = None,
+    model_name: str = "rinalmo",
 ) -> None:
     """
     Scan reference transcripts for functional islands.
 
     This preprocessing step only needs to run once per reference genome.
     Results can be reused across multiple query species.
+
+    If cache_db_path is given, per-transcript results are cached there keyed by
+    model + scan params + exon blocks (see ref_islands_cache). Transcripts already
+    cached (from a prior species' run against the same reference) are restored
+    without re-embedding; only new transcripts are scanned and then cached. "No
+    islands" is a cached result too.
     """
     from modules.logreg_signal_noise.apply_logreg import load_logreg_model
+    from modules.pipeline.ref_islands_cache import (
+        RefIslandCache, params_signature, blocks_signature)
 
     async def _run() -> None:
         t0 = time.monotonic()
@@ -552,6 +562,22 @@ def run_reference_islands_scanner(
             jobs = jobs[:test_cap_jobs]
             print(f"# [TEST MODE] Capped to {len(jobs)} jobs (--test-cap-jobs={test_cap_jobs})")
         print(f"# Loaded {len(jobs)} reference transcript island scanning jobs.")
+
+        # Reference-island cache: restore transcripts scanned in a prior run
+        # (same reference/model/params), scan only the new ones.
+        cache = None
+        cached_payloads: Dict[str, dict] = {}
+        blocks_sig_by_tid: Dict[str, str] = {}
+        if cache_db_path:
+            psig = params_signature(model_name, window_size, stride, smooth_window, prob_threshold)
+            cache = RefIslandCache(cache_db_path, psig)
+            blocks_sig_by_tid = {
+                j.transcript_id: blocks_signature(j.chrom, j.strand, j.exon_blocks) for j in jobs
+            }
+            cached_payloads = cache.lookup(blocks_sig_by_tid)
+            jobs = [j for j in jobs if j.transcript_id not in cached_payloads]
+            print(f"# Reference-island cache: {len(cached_payloads)} restored from cache, "
+                  f"{len(jobs)} to compute (db={cache_db_path})")
         print(f"# Reference islands scanner workers: {max_concurrent}")
 
         # Load model
@@ -639,14 +665,24 @@ def run_reference_islands_scanner(
 
         conn.close()
 
-        # Build final JSON with metadata
-        output_data = {}
+        # Freshly-scanned results from this run
+        fresh = {}
         for tid, metadata in transcript_metadata.items():
-            output_data[tid] = {
+            fresh[tid] = {
                 "total_length": metadata["total_length"],
                 "sum_exons_length": metadata["sum_exons_length"],
                 "islands": islands_by_transcript.get(tid, []),
             }
+
+        # Persist freshly-scanned to the cache for future species' runs
+        if cache is not None:
+            n = cache.store({tid: {"blocks_sig": blocks_sig_by_tid[tid], "payload": p}
+                             for tid, p in fresh.items() if tid in blocks_sig_by_tid})
+            print(f"# Reference-island cache: stored {n} newly-scanned transcripts")
+            cache.close()
+
+        # Final JSON = cache-restored + freshly-scanned
+        output_data = {**cached_payloads, **fresh}
 
         with open(output_json_path, "w") as f:
             json.dump(output_data, f, indent=2)

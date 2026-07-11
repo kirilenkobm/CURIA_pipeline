@@ -122,6 +122,15 @@ def parse_args():
         help="best-chain mode only: top-scoring chains kept per transcript "
              "(lowest chain id = best). Default 1.",
     )
+    parser.add_argument(
+        "--ref-islands-db",
+        default=None,
+        help="Persistent reference-island cache (SQLite). Reference island "
+             "scanning is species-independent, so across many query species vs the "
+             "same reference this reuses each transcript's islands instead of "
+             "re-embedding it. Created if absent; keyed by model + scan params + "
+             "exon blocks. Recommend ONE cache DB per running lane.",
+    )
 
     if len(sys.argv) < 2:
         parser.print_help()
@@ -318,6 +327,8 @@ def run_reference_islands_step(
             window_size=scan["window_size"],
             stride=scan["stride"],
             prob_threshold=scan["prob_threshold"],
+            cache_db_path=(str(args.ref_islands_db) if args.ref_islands_db else None),
+            model_name=args.model,
         )
 
     return ref_islands_json

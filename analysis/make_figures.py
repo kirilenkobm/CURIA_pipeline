@@ -222,7 +222,7 @@ def fig1(outdir: Path, results_dir: Optional[Path]) -> None:
 # =====================================================================
 # Figure 3B --- island matching (scripted). Panel A stays a schematic.
 # Real MALAT1 core: cosine dotplot + SW band (match) vs an unrelated island.
-# Data: analysis/compute_fig3b_dotplot.py (rinalmo_version_outputs/hg38_vs_mm39)
+# Data: analysis/compute_fig3b_dotplot.py (preprint_results/hg38_vs_mm39)
 # =====================================================================
 _FIG3B_CACHE = Path(__file__).resolve().parent / "data" / "fig3b_dotplot.npz"
 _SW_TAU, _SW_GAP = 0.5, 0.3   # deployed island_align params
@@ -370,7 +370,7 @@ def fig3(outdir: Path, results_dir: Optional[Path]) -> None:
 # Source: figure_mmd_validation_3panel.pdf / MMD_vs_seqID_short_ncRNA.pdf
 # Short-ncRNA metric is still MMD (short_ncrna._compute_mmd_with_ref); swap
 # model, same claims, new numbers. Data: analysis/compute_fig4_data.py
-# (rinalmo_version_outputs/hg38_vs_mm39) -> analysis/data/fig4_mmd.npz.
+# (preprint_results/hg38_vs_mm39) -> analysis/data/fig4_mmd.npz.
 # =====================================================================
 _FIG4_CACHE = Path(__file__).resolve().parent / "data" / "fig4_mmd.npz"
 
@@ -474,20 +474,59 @@ def fig4(outdir: Path, results_dir: Optional[Path]) -> None:
 # =====================================================================
 # name / clade / divergence-from-human (Mya). Verbatim from the deprecated
 # island_phylo_conservation notebook (cell 3).
+# div_mya are clade-level approximations of divergence-from-human (My): great apes
+# ~9, OWM ~25, Glires ~90, Laurasiatheria ~94, Atlantogenata (Xenarthra+Afrotheria)
+# ~105, Marsupialia ~180. HL* = Hiller-lab/Zoonomia assemblies (HL<genus><species>).
 _SPECIES_META = {
-    "rheMac10": {"name": "Rhesus", "clade": "Euarchontoglires", "div_mya": 25},
-    "mm39":     {"name": "Mouse",          "clade": "Euarchontoglires", "div_mya": 90},
-    "rn7":      {"name": "Rat",            "clade": "Euarchontoglires", "div_mya": 90},
-    "bosTau9":  {"name": "Cow",            "clade": "Laurasiatheria",   "div_mya": 94},
-    "susScr11": {"name": "Pig",            "clade": "Laurasiatheria",   "div_mya": 94},
-    "equCab3":  {"name": "Horse",          "clade": "Laurasiatheria",   "div_mya": 94},
-    "felCat9":  {"name": "Cat",            "clade": "Laurasiatheria",   "div_mya": 94},
-    "eriEur2":  {"name": "Hedgehog",       "clade": "Laurasiatheria",   "div_mya": 94},
-    "dasNov3":  {"name": "Armadillo",      "clade": "Xenarthra",        "div_mya": 105},
-    "monDom5":  {"name": "Opossum",        "clade": "Marsupialia",      "div_mya": 180},
+    # Primates
+    "gorGor6":  {"name": "Gorilla",          "clade": "Euarchontoglires", "div_mya": 9},
+    "rheMac10": {"name": "Rhesus",           "clade": "Euarchontoglires", "div_mya": 25},
+    # Glires (rodents + rabbit)
+    "mm39":     {"name": "Mouse",            "clade": "Euarchontoglires", "div_mya": 90},
+    "rn7":      {"name": "Rat",              "clade": "Euarchontoglires", "div_mya": 90},
+    "cavPor3":  {"name": "Guinea pig",       "clade": "Euarchontoglires", "div_mya": 90},
+    "HLoryCun3":{"name": "Rabbit",           "clade": "Euarchontoglires", "div_mya": 90},  # Oryctolagus cuniculus
+    # Laurasiatheria
+    "bosTau9":  {"name": "Cow",              "clade": "Laurasiatheria",   "div_mya": 94},
+    "susScr11": {"name": "Pig",              "clade": "Laurasiatheria",   "div_mya": 94},
+    "HLhipAmp3":{"name": "Hippopotamus",     "clade": "Laurasiatheria",   "div_mya": 94},  # Hippopotamus amphibius
+    "HLbalEde1":{"name": "Bryde's whale",    "clade": "Laurasiatheria",   "div_mya": 94},  # Balaenoptera edeni
+    "HLturTru5":{"name": "Dolphin",          "clade": "Laurasiatheria",   "div_mya": 94},  # Tursiops truncatus
+    "HLcamDro2":{"name": "Dromedary",        "clade": "Laurasiatheria",   "div_mya": 94},  # Camelus dromedarius
+    "equCab3":  {"name": "Horse",            "clade": "Laurasiatheria",   "div_mya": 94},
+    "felCat9":  {"name": "Cat",              "clade": "Laurasiatheria",   "div_mya": 94},
+    "HLmanJav2":{"name": "Pangolin",         "clade": "Laurasiatheria",   "div_mya": 94},  # Manis javanica
+    "HLmyoMyo6":{"name": "Mouse-eared bat",  "clade": "Laurasiatheria",   "div_mya": 94},  # Myotis myotis
+    "HLmyoLuc1":{"name": "Little brown bat", "clade": "Laurasiatheria",   "div_mya": 94},  # Myotis lucifugus
+    "HLpteVam2":{"name": "Flying fox",       "clade": "Laurasiatheria",   "div_mya": 94},  # Pteropus vampyrus
+    "eriEur2":  {"name": "Hedgehog",         "clade": "Laurasiatheria",   "div_mya": 94},
+    # Xenarthra
+    "dasNov3":  {"name": "Armadillo",        "clade": "Xenarthra",        "div_mya": 105},
+    "HLchoHof3":{"name": "Sloth",            "clade": "Xenarthra",        "div_mya": 105},  # Choloepus hoffmanni
+    # Afrotheria
+    "HLoryAfeAfe2":{"name": "Aardvark",      "clade": "Afrotheria",       "div_mya": 105},  # Orycteropus afer
+    "HLeleMax1":{"name": "Asian elephant",   "clade": "Afrotheria",       "div_mya": 105},  # Elephas maximus
+    "HLproCap4":{"name": "Rock hyrax",       "clade": "Afrotheria",       "div_mya": 105},  # Procavia capensis
+    # Marsupials
+    "monDom5":  {"name": "Gray opossum",     "clade": "Marsupialia",      "div_mya": 180},
+    "HLdidVir1":{"name": "Virginia opossum", "clade": "Marsupialia",      "div_mya": 180},  # Didelphis virginiana
+    "HLnotEug3":{"name": "Tammar wallaby",   "clade": "Marsupialia",      "div_mya": 180},  # Notamacropus eugenii
 }
-_PHYLO_ORDER = ["rheMac10", "mm39", "rn7", "bosTau9", "susScr11",
-                "equCab3", "felCat9", "eriEur2", "dasNov3", "monDom5"]
+_PHYLO_ORDER = [
+    "gorGor6", "rheMac10", "mm39", "rn7", "cavPor3", "HLoryCun3",
+    "bosTau9", "susScr11", "HLhipAmp3", "HLbalEde1", "HLturTru5", "HLcamDro2",
+    "equCab3", "felCat9", "HLmanJav2", "HLmyoMyo6", "HLmyoLuc1", "HLpteVam2", "eriEur2",
+    "dasNov3", "HLchoHof3", "HLoryAfeAfe2", "HLeleMax1", "HLproCap4",
+    "monDom5", "HLdidVir1", "HLnotEug3",
+]
+
+
+def _meta(sp: str) -> dict:
+    """Species metadata, with a safe fallback for assemblies not yet curated in
+    _SPECIES_META (new species land under preprint_results before we add them).
+    Unknown species get div_mya=None so they still appear in the core heatmaps /
+    counts but are dropped from the phylogenetic-distance panel."""
+    return _SPECIES_META.get(sp, {"name": sp, "clade": "?", "div_mya": None})
 
 # Fig 6A representative lncRNAs (bare ENSG, versionless). Famous nuclear/
 # regulatory lncRNAs spanning a modularity gradient: NEAT1 (many modular cores),
@@ -509,8 +548,20 @@ def _load_islands(results_dir: Path):
 
     Returns (dataframe, species_present_in_phylo_order)."""
     import pandas as pd
+    # Auto-detect every hg38_vs_<sp> pair on disk. Known species come first in
+    # curated phylo order; any species not yet in _SPECIES_META is appended
+    # (sorted) with a loud warning so nothing is silently dropped as the panel grows.
+    on_disk = sorted(p.name.replace("hg38_vs_", "")
+                     for p in results_dir.glob("hg38_vs_*") if p.is_dir())
+    known = [sp for sp in _PHYLO_ORDER if sp in on_disk]
+    unknown = [sp for sp in on_disk if sp not in _SPECIES_META]
+    if unknown:
+        print(f"# WARNING: {len(unknown)} species not in _SPECIES_META (add "
+              f"name/clade/div_mya): {', '.join(unknown)}")
+    order = known + unknown
+
     frames, present = [], []
-    for sp in _PHYLO_ORDER:
+    for sp in order:
         tsv = results_dir / f"hg38_vs_{sp}" / "island_alignment_results.tsv"
         if not tsv.exists():
             continue
@@ -518,7 +569,7 @@ def _load_islands(results_dir: Path):
         if df.empty:
             continue
         df["species"] = sp
-        df["div_mya"] = _SPECIES_META[sp]["div_mya"]
+        df["div_mya"] = _meta(sp)["div_mya"]
         # bare, versionless gene id (U_ENSG00000260032.3 -> ENSG00000260032)
         df["gene_bare"] = df["gene_id"].str.extract(r"(ENSG\d+)", expand=False)
         frames.append(df)
@@ -595,7 +646,7 @@ def _fig6a_heatmap(ax, best, gene_bare, gene_sym, present, cmap, show_ylabels):
     ax.set_xlabel("core", fontsize=6.5)
     ax.set_yticks(range(len(present)))
     if show_ylabels:
-        ax.set_yticklabels([_SPECIES_META[s]["name"] for s in present], fontsize=6.5)
+        ax.set_yticklabels([_meta(s)["name"] for s in present], fontsize=6.5)
     else:
         ax.set_yticklabels([])
     ax.set_title(gene_sym, loc="center", fontsize=8, fontweight="bold")
@@ -624,12 +675,14 @@ def _fig6b_reproducibility(ax, best, n_species):
 
 def _fig6c_phylo(ax, df, present):
     """Median cosine-SW distance per species vs divergence time (median +/- IQR),
-    in phylogenetic order."""
+    in phylogenetic order. Species with unknown div_mya (not yet curated) are
+    omitted from this panel since they have no x-position."""
+    sp_ok = [s for s in present if _meta(s)["div_mya"] is not None]
     stat = (df.groupby("species")["diag_mmd"]
               .agg(median="median", q25=lambda x: x.quantile(0.25),
                    q75=lambda x: x.quantile(0.75))
-              .reindex(present))
-    x = np.arange(len(present))
+              .reindex(sp_ok))
+    x = np.arange(len(sp_ok))
     lo = (stat["median"] - stat["q25"]).to_numpy()
     hi = (stat["q75"] - stat["median"]).to_numpy()
     ax.errorbar(x, stat["median"].to_numpy(), yerr=[lo, hi], fmt="o-",
@@ -638,8 +691,8 @@ def _fig6c_phylo(ax, df, present):
                 markerfacecolor=fs.PALETTE["accent"], markeredgecolor="white",
                 markeredgewidth=0.6)
     ax.set_xticks(x)
-    ax.set_xticklabels([f"{_SPECIES_META[s]['name']}\n({_SPECIES_META[s]['div_mya']} My)"
-                        for s in present], fontsize=6, rotation=0)
+    ax.set_xticklabels([f"{_meta(s)['name']} ({_meta(s)['div_mya']} My)"
+                        for s in sp_ok], fontsize=6, rotation=40, ha="right")
     ax.set_ylabel("Median cosine-SW distance")
     ax.set_ylim(bottom=0)
 
@@ -648,7 +701,7 @@ def _fig6c_phylo(ax, df, present):
 def fig6(outdir: Path, results_dir: Optional[Path]) -> None:
     import matplotlib.pyplot as plt
     fs.set_style()
-    rdir = results_dir or (Path(__file__).resolve().parents[1] / "rinalmo_version_outputs")
+    rdir = results_dir or (Path(__file__).resolve().parents[1] / "preprint_results")
     df, present = _load_islands(rdir)
 
     # Explicit gridspec (not mosaic) so Panel A's inter-heatmap gap is tight and

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Compute reportable numbers for one reference-vs-query CURIA run.
 
-Reads a results directory (e.g. rinalmo_version_outputs/hg38_vs_mm39) and prints
+Reads a results directory (e.g. preprint_results/hg38_vs_mm39) and prints
 short-ncRNA, island, and sequence-identity-vs-MMD statistics that can go straight
 into the paper. Parametrized by pair so the same script aggregates over the
 10-mammal panel once those runs land.
 
 Usage:
     .venv/bin/python analysis/pair_numbers.py \
-        --results rinalmo_version_outputs/hg38_vs_mm39 \
+        --results preprint_results/hg38_vs_mm39 \
         --ref-2bit input_data/2bit/hg38.2bit --query-2bit input_data/2bit/mm39.2bit
 """
 from __future__ import annotations
