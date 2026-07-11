@@ -71,7 +71,7 @@ def write_short_ncrna_joblist(
     rna_orthologous_regions_path: str,
     ultimate_bed_path: str,
     out_path: str,
-    max_length: int = 160,
+    max_length: int = 256,  # RiNALMo compact-RNA cutoff (was 160, an RNA-FM legacy)
 ) -> int:
     transcript_regions = _load_transcript_regions(ultimate_bed_path)
 

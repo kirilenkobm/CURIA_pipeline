@@ -44,6 +44,7 @@ from pyrion import TwoBitAccessor                                               
 WIN, STRIDE, SMOOTH, PROB_THR = 72, 16, 5, 0.25
 SW_TAU_COS, SW_GAP = 0.5, 0.3
 MAX_MATCH_DIST, MIN_EFF_NT = 0.5, 40
+COMPACT_EXON_MAX = 320   # single-exon transcripts <= this -> compact-RNA path
 
 SYMBOL_OVERRIDES = {"RMRP": "ENSG00000277027", "RPPH1": "ENSG00000277209",
                     "XACT": "ENSG00000241743", "JPX": "ENSG00000225470",
@@ -115,7 +116,7 @@ def resolve(g):
     return g if g.startswith("ENSG") else SYMBOL_OVERRIDES.get(g, g)
 
 
-def run(emb, gene, species, results_dir, ref_2bit, q_2bit):
+def run(emb, gene, species, results_dir, ref_2bit, q_2bit, compact=False):
     ens = resolve(gene)
     D = results_dir / f"hg38_vs_{species}"
     ref_acc, q_acc = TwoBitAccessor(str(ref_2bit)), TwoBitAccessor(str(q_2bit))
@@ -140,6 +141,26 @@ def run(emb, gene, species, results_dir, ref_2bit, q_2bit):
     mids = u2q.get(tid, [])
     if not mids:
         print("  REJECT @ liftover: transcript not in union_to_query (no projected region)")
+        return
+
+    # COMPACT-RNA path: single-exon transcript with exon <= COMPACT_EXON_MAX ->
+    # force the whole exon as one reference island (skip finder), and use the whole
+    # projected region as the single query candidate (skip query finder).
+    tstart, tend = int(row[1]), int(row[2])
+    exon_len = tend - tstart
+    if compact and nblocks == 1 and exon_len <= COMPACT_EXON_MAX:
+        ref_seq = _extract_sequence(ref_acc, chrom, tstart, tend, strand)
+        print(f"  [COMPACT] forced ref island = whole exon {chrom}:{tstart}-{tend} len={exon_len}")
+        for mid in mids:
+            mr = clusters[mid]["merged_region"]
+            qs, qe = int(mr["start"]), int(mr["end"])
+            qseq = _extract_sequence(q_acc, mr["chrom"], qs, qe, int(mr["strand"]))
+            m = score(emb, ref_seq, qseq)  # whole region as single query candidate
+            print(f"    [COMPACT] query region {mr['chrom']}:{qs}-{qe} len={qe-qs} "
+                  f"(ratio {(qe-qs)/exon_len:.1f}x) -> whole-region match:")
+            print(f"      SW={m['sw']:7.2f} ref_aln={m['ref_aln']} q_aln={m['q_aln']} "
+                  f"eff_nt={m['eff_nt']} mean_cos={m['mean_cos']:.3f} dist={m['dist']:.3f} "
+                  f"-> {m['verdict']}")
         return
 
     for isl in islands:
@@ -186,11 +207,12 @@ def main():
     ap.add_argument("--results-dir", type=Path, default=REPO / "preprint_results")
     ap.add_argument("--ref-2bit", type=Path, default=REPO / "input_data/2bit/hg38.2bit")
     ap.add_argument("--query-2bit", type=Path, default=None)
+    ap.add_argument("--compact", action="store_true", help="simulate compact-RNA path")
     args = ap.parse_args()
     q2 = args.query_2bit or (REPO / f"input_data/2bit/{args.species}.2bit")
     emb = Embedder()
     for g in args.gene:
-        run(emb, g, args.species, args.results_dir, args.ref_2bit, q2)
+        run(emb, g, args.species, args.results_dir, args.ref_2bit, q2, compact=args.compact)
 
 
 if __name__ == "__main__":

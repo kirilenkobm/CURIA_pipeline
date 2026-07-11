@@ -451,7 +451,7 @@ def main():
                 str(paths.rna_toga_regions),
                 str(paths.union_bed),
                 str(paths.short_joblist),
-                max_length=160,
+                max_length=256,  # RiNALMo compact-RNA cutoff (was 160, an RNA-FM legacy)
             )
 
         # Run a short ncRNA scheduler

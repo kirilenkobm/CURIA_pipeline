@@ -15,6 +15,11 @@ from pyrion import TwoBitAccessor
 
 from modules.utils.signal_processing import smooth_signal
 
+# Direct-query fallback: for a projected region no larger than this, if the query
+# island finder detects nothing, use the whole region as a single query-island
+# candidate (compact structured RNAs). Matches the joblist min_scan_region_bp floor.
+COMPACT_DIRECT_QUERY_MAX = 2500
+
 
 @dataclass(frozen=True)
 class QueryIslandScanJob:
@@ -38,6 +43,7 @@ def write_query_islands_joblist(
     min_query_length: int = 128,
     max_query_length: int = 1_500_000,
     max_query_ref_ratio: float = 4.0,
+    min_scan_region_bp: int = 2500,
 ) -> int:
     """
     Create joblist from merged query regions clusters for island scanning.
@@ -108,19 +114,23 @@ def write_query_islands_joblist(
                 filter_stats["too_long_abs"] += 1
                 continue
 
-            # Filter 4: Too long relative to reference
-            # Check against ALL ultimate transcripts in this cluster
-            too_long_for_all = True
-            for uid in ultimate_ids:
-                if uid in ref_islands_data:
-                    ref_length = ref_islands_data[uid].get("total_length", 0)
-                    if ref_length > 0 and query_length <= max_query_ref_ratio * ref_length:
-                        too_long_for_all = False
-                        break
+            # Filter 4: too long relative to reference. Always allow small regions
+            # (<= min_scan_region_bp): compact structured RNAs project to regions
+            # whose size is dominated by fixed liftover flanks, not transcript
+            # length, so they exceed the 4x ratio at only ~1-2 kb. The ratio still
+            # rejects genuine gap-spanning explosions (typically 6-19 kb).
+            if query_length > min_scan_region_bp:
+                too_long_for_all = True
+                for uid in ultimate_ids:
+                    if uid in ref_islands_data:
+                        ref_length = ref_islands_data[uid].get("total_length", 0)
+                        if ref_length > 0 and query_length <= max_query_ref_ratio * ref_length:
+                            too_long_for_all = False
+                            break
 
-            if too_long_for_all:
-                filter_stats["too_long_ratio"] += 1
-                continue
+                if too_long_for_all:
+                    filter_stats["too_long_ratio"] += 1
+                    continue
 
             filter_stats["kept"] += 1
             kept_transcripts.update(ultimate_ids)
@@ -393,6 +403,12 @@ async def _process_query_island_scan(
         idx = island['indices']
         island['max_prob'] = float(np.max(probs_smooth[idx]))
         island['avg_prob'] = float(np.mean(probs_smooth[idx]))
+
+    # Direct-query fallback: in a small (compact-scale) region where the finder
+    # found no island, treat the whole region as a single query-island candidate so
+    # compact structured RNAs still have something to align against.
+    if not islands and len(sequence) <= COMPACT_DIRECT_QUERY_MAX:
+        islands = [{"start": 0, "end": len(sequence), "max_prob": 0.0, "avg_prob": 0.0}]
 
     # Convert to genomic coordinates
     results = []

@@ -28,6 +28,12 @@ from pyrion import TwoBitAccessor
 
 from modules.utils.signal_processing import smooth_signal
 
+# Compact-RNA path: a single-exon reference transcript no longer than this is
+# treated as one forced island (whole exon) instead of being run through the
+# island finder --- covers compact structured ncRNAs (RMRP, RPPH1, ...) that are
+# conserved end-to-end rather than in sparse sub-islands.
+COMPACT_EXON_MAX = 320
+
 
 @dataclass(frozen=True)
 class ReferenceIslandScanJob:
@@ -372,6 +378,17 @@ async def _process_transcript(
     # Calculate lengths
     total_length = job.end - job.start
     sum_exons_length = sum(end - start for start, end in job.exon_blocks)
+
+    # Compact-RNA path: a single short exon (e.g. RMRP, RPPH1) is a compact
+    # structured ncRNA, not a long lncRNA with sparse islands. Don't run the island
+    # finder; force the whole exon as one reference island (no embedding needed).
+    if len(job.exon_blocks) == 1 and sum_exons_length <= COMPACT_EXON_MAX:
+        s, e = job.exon_blocks[0]
+        return [{
+            "transcript_id": job.transcript_id, "island_number": 1, "segment_number": 0,
+            "chrom": job.chrom, "start": int(s), "end": int(e),
+            "strand": job.strand, "score": 1.0,
+        }], total_length, sum_exons_length
 
     if seq_len < window_size:
         return [], total_length, sum_exons_length
