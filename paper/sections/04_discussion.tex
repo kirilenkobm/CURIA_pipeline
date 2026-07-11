@@ -25,20 +25,30 @@ structural comparison but do not directly address genome-scale correspondence.
 Covariance models and structure alignment methods offer high specificity but rely
 on curated families or are computationally expensive, limiting their scalability.
 Genome-wide scanning approaches identify candidate RNA elements but do not
-establish explicit cross-species correspondence. In contrast, \curia{} combines
-syntenic constraints with embedding-based similarity to enable tractable
-genome-scale analysis of ncRNA correspondence without requiring curated families
-or explicit structural alignment.
+establish explicit cross-species correspondence. Methods specifically targeting
+lncRNA homology are most directly comparable: slncky infers lncRNA orthologs from
+whole-genome alignments using sequence-level conservation signatures, and lncHOME
+groups lncRNAs into families based on conserved genomic position combined with
+patterns of RNA-binding-protein motifs.
+% TODO(authors): add \cite keys for slncky (Chen et al., Genome Biol. 2016) and
+% lncHOME to CURIA_Preprint.bib, then cite them on the sentence above. No bib
+% entries currently exist; not fabricating citation metadata here.
+Both rely on primary-sequence or motif-level signals to define homology. In
+contrast, \curia{} does not require sequence-level conservation within the ncRNA
+itself: it combines syntenic constraints with embedding-based similarity, so
+correspondence can be proposed for loci whose primary sequence has diverged beyond
+the reach of alignment- or motif-based comparison, without requiring curated
+families or explicit structural alignment.
 
 \subsection{Biological implications}
-Our results indicate that cross-species ncRNA correspondence is often heterogeneous
-and localized rather than transcript-wide. For long ncRNAs, correspondence
-frequently concentrates in compact subregions, while the surrounding transcript
-context shows weak or no detectable similarity. Embedding-based similarity is
-strongly associated with sequence identity for short ncRNAs, but this relationship
-is not uniform: at intermediate sequence identity ($\approx 40$--$60\%$),
-substantial variability is observed, indicating that loci with comparable sequence
-similarity can exhibit markedly different embedding-based similarity.
+Beyond the modular correspondence pattern noted above, two observations bear on
+interpretation. For long ncRNAs, correspondence frequently concentrates in compact
+subregions while the surrounding transcript context shows weak or no detectable
+similarity. And for short ncRNAs, although embedding-based similarity is strongly
+associated with sequence identity, the relationship is not uniform: at intermediate
+sequence identity ($\approx 40$--$60\%$), substantial variability is observed,
+indicating that loci with comparable sequence similarity can exhibit markedly
+different embedding-based similarity.
 
 The island-based representation provides a practical way to capture this behavior:
 recurrent high-confidence islands define candidate conserved cores, while
@@ -61,8 +71,9 @@ annotation overlap provides only an approximate and conservative estimate of
 performance.
 
 Second, \curia{} depends on the availability and quality of genome alignment
-chains. While chains effectively constrain the search space, errors or
-fragmentation in alignments can affect downstream predictions. In addition, the
+chains. Because the search space is restricted to aligned regions, correspondence
+cannot be recovered outside chain coverage, and errors or fragmentation in
+alignments propagate directly to downstream predictions. In addition, the
 candidate-region classification step is adapted from protein-coding gene
 projection and may not fully capture the diversity of ncRNA correspondence
 patterns.
@@ -72,7 +83,10 @@ models. Although RiNALMo \citep{penicRiNALMoGeneralpurposeRNA2025} provides a
 practical and context-stable representation, it may not capture all relevant
 structural features. In particular, \curia{} is primarily sensitive to localized
 signal in embedding space and does not model long-range interactions or global RNA
-architecture.
+architecture. Because it assumes approximate collinearity within candidate regions
+and scores local similarity, it does not capture rearrangements of structured
+elements; loci lacking localized embedding signal are unlikely to yield detectable
+correspondence.
 
 Fourth, \curia{} does not establish transcriptional activity or molecular
 function; predicted regions represent candidate corresponding elements and require
@@ -102,16 +116,6 @@ continuous scale separating high-confidence matches from background signal. This
 interpretation is broadly consistent with observations from protein language
 models, where representations learned from sequence alone organize according to
 structural and functional properties \citep{rivesBiologicalStructureFunction2021}.
-
-\subsection{Failure modes}
-The limitations of \curia{} follow directly from its design assumptions. First,
-the method depends on the presence of localized signal in embedding space; loci
-lacking such signal are unlikely to yield detectable correspondence. Second,
-\curia{} relies on genome alignment chains to constrain the search space, so
-correspondence cannot be recovered outside aligned regions, and alignment errors
-propagate directly to predictions. Third, the approach assumes approximate
-collinearity and focuses on local similarity; it therefore does not capture
-rearrangements of structured elements or long-range RNA interactions.
 
 \subsection{Future directions}
 Several directions follow from the current design. \curia{} matches islands at a

@@ -37,11 +37,14 @@ following the criteria defined in Section~\ref{sec:eval}.
 
 \subsection{Overall performance}
 % TODO(rinalmo): regenerate all counts/percentages from the 10-mammal run.
-We first evaluated agreement between predicted loci and existing annotations.
-Among 2{,}805 predicted short ncRNA loci, 53.1\% overlap annotated exons, with
-47.7\% covering $\geq 50\%$ of the annotated transcript and 35.5\% showing
-near-complete overlap ($\geq 99\%$). Among overlapping predictions, the median
-overlap is 100\% (mean 88.8\%), indicating that matched loci are typically well
+We first evaluated agreement between predicted loci and existing annotations. In
+the human-to-mouse evaluation (mouse being the query for which a comprehensive
+reference annotation is available), among 2{,}805 predicted short ncRNA loci
+53.1\% show any overlap with an annotated exon ($\geq 1$\,nt; any-overlap rate),
+47.7\% meet a reciprocal-overlap recovery criterion (predicted locus covering
+$\geq 50\%$ of the annotated transcript), and 35.5\% meet near-complete boundary
+recovery ($\geq 99\%$ overlap). Among any-overlap predictions, the median overlap
+is 100\% (mean 88.8\%), indicating that matched loci are typically well
 localized and consistent with annotated boundaries.
 
 These results suggest that matched loci are generally well localized when
@@ -69,8 +72,9 @@ range, whereas snRNAs, misc\_RNAs, and rRNA-derived loci show higher and broader
 distributions, likely reflecting copy number, sequence divergence, and genomic
 context.
 
-MMD is strongly associated with annotation agreement. Predictions with low MMD
-values ($\lesssim 0.1$) show high overlap with annotated loci (${\sim}90\%$),
+MMD is strongly associated with annotation overlap. Predictions with low MMD
+values ($\lesssim 0.1$) show high any-overlap rates with annotated loci
+(${\sim}90\%$),
 whereas higher MMD values show reduced overlap and increased dispersion.
 Predictions with MMD $> 0.2$ rarely overlap annotations and are enriched for
 ambiguous cases. Consistent with this, loci overlapping annotations are enriched
@@ -87,8 +91,8 @@ conservation, we compared MMD to pairwise sequence identity for matched short
 ncRNA loci. The two measures were strongly anticorrelated (Pearson $r = -0.81$;
 Spearman $\rho = -0.85$; $n = 2{,}700$). However, this relationship is not
 deterministic: at intermediate sequence identity ($\approx 40$--$60\%$), MMD
-values span a broad range, indicating that embedding representations capture
-additional structure beyond raw sequence identity in this regime.
+values span a broad range, indicating that embedding similarity is related to,
+but not fully determined by, pairwise sequence identity in this regime.
 
 \begin{figure}[t]
   \centering
@@ -151,8 +155,9 @@ cores are unlikely to arise from random similarity within syntenic regions.
 % TODO(rinalmo): regenerate the ~700 count once the full 10-species panel is
 % rerun (analysis/make_conserved_cores.py writes the TSV linked below).
 After excluding regions overlapping or proximal to protein-coding genes, we
-identify approximately 700 candidate conserved intergenic lncRNA loci exhibiting
-consistent embedding-space similarity across $\geq 9$ species. The full set of
+identify approximately 700 candidate intergenic loci potentially corresponding to
+conserved ncRNA elements, exhibiting consistent embedding-space similarity across
+$\geq 9$ species. The full set of
 loci (all conservation categories) is provided as a supplementary table in the
 repository:
 \url{https://github.com/kirilenkobm/CURIA_pipeline/blob/master/paper/lncRNAs_with_conserved_cores.tsv}.
@@ -184,7 +189,7 @@ the most similar segment within the syntenic region.
   browser snapshots (UCSC) illustrating representative examples of short ncRNA
   projection from human (hg38) to mouse (mm39): SNORD57 (exact match), RNU6-7
   (recovery under incomplete annotation), and vault RNA (length divergence,
-  partial correspondence). \emph{[TODO: regenerate with RiNALMo.]}}
+  partial correspondence).}
   \label{fig:cases}
 \end{figure}
 
@@ -198,8 +203,7 @@ the most similar segment within the syntenic region.
   (NEAT1, MIAT, MALAT1, XIST, NORAD); rows are species, columns are reference cores ordered along
   the transcript, color indicates match distance (cosine-SW distance $d=1/(1+s)$). \textbf{(B)} Distribution of
   core reproducibility across species. \textbf{(C)} Median island-level match
-  distance across species, increasing with phylogenetic distance. \emph{[TODO:
-  color scale is now cosine-SW distance, not MMD.]}}
+  distance across species, increasing with phylogenetic distance.}
   \label{fig:cores}
 \end{figure}
 
@@ -220,7 +224,7 @@ downstream matching procedure.
 We evaluated \curia{} on the mammalian genome-pair panel. Using an AMD EPYC 7713P
 CPU and an NVIDIA RTX PRO 4500 GPU (32\,GB VRAM), a full genome-pair run completes
 in approximately three hours (3.1--3.3\,h across completed pairs). Embedding inference is
-performed on GPU with batched execution (up to 2048 sequences per batch), while
+performed on GPU with batched execution, while
 downstream matching and alignment are CPU-bound. Runtime scales approximately
 linearly with annotation size, and both reference and query island detection are
 restricted to syntenically projected regions, substantially reducing the effective

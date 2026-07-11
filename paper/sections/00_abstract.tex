@@ -15,12 +15,14 @@ projection, then detects localized subregions (``islands'') within transcripts,
 and finally establishes cross-species correspondence using similarity of
 embedding representations. Because the embedding model is largely stable
 across sequence context, each island is embedded once and matched at nucleotide
-resolution. Using a conservative annotation-based evaluation across ten mammalian
-genomes, \curia{} identified short ncRNA loci, 53.1\% of which overlapped existing
-annotations, and uncovered ${\sim}700$ candidate conserved intergenic lncRNA loci
-absent from current annotations. These results suggest that combining synteny
-with embedding-based similarity can support cross-species ncRNA annotation in
-settings where primary-sequence conservation alone is insufficient, establishing
-a proof of concept for integrating comparative genomics with RNA foundation-model
-embeddings for genome-scale ncRNA analysis.
+resolution. Using a conservative annotation-based evaluation across a panel of
+mammalian genomes, \curia{} identified short ncRNA loci; in the human-to-mouse
+comparison, 53.1\% of predicted loci overlapped an annotated exon (any overlap).
+It further uncovered ${\sim}700$ candidate intergenic loci potentially
+corresponding to conserved ncRNA elements absent from current annotations. These
+results suggest that combining synteny with embedding-based similarity can
+complement conventional sequence conservation for cross-species ncRNA annotation
+in settings characterized by weak or heterogeneous primary-sequence conservation,
+establishing a proof of concept for integrating comparative genomics with RNA
+foundation-model embeddings for genome-scale ncRNA analysis.
 \end{abstract}

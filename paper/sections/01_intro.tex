@@ -107,7 +107,11 @@ conservation is limited.
   embeddings to distinguish annotated hg38 ncRNAs (purple; tRNA, snoRNA, miRNA)
   from background sequences (gray; intergenic and dinucleotide-shuffled): ncRNAs
   score near $1$ and background near $0$ (AUC ${\approx}0.96$), showing the
-  embeddings separate RNA-derived sequence from genomic background.
+  embeddings separate RNA-derived sequence from genomic background. Panel (B) is
+  an illustrative separability experiment on a small balanced set and is not the
+  production island detector used in the pipeline (Section~\ref{sec:refisland}),
+  which is trained on a different biotype set and negatives and operates at a
+  different threshold.
   \textbf{(C)} Maximum Mean Discrepancy (MMD) between a short-ncRNA reference and
   windows tiled across its extended locus, versus offset from the annotated
   position (median and interquartile range over $n=100$ short ncRNAs, each locus
@@ -123,9 +127,9 @@ conservation is limited.
 \subsection{Method overview}
 We formulate cross-species ncRNA correspondence as matching of
 embedding-supported regions constrained by genome alignment chains. Candidate loci
-are first identified using a TOGA-inspired projection that leverages syntenic
-consistency and coverage of neutrally evolving sequence (e.g., intronic and
-flanking regions), which remains more reliably alignable across species
+are first identified using a TOGA-inspired projection that leverages alignment
+coverage in intronic and flanking sequence to provide locus-level syntenic
+context that is partly independent of conservation within the ncRNA itself
 \citep{kirilenkoIntegratingGeneAnnotation2023,sharmaIncreasedAlignmentSensitivity2017}.
 
 Within these candidate regions, \curia{} evaluates similarity in embedding space
