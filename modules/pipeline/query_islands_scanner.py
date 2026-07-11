@@ -13,6 +13,8 @@ from scipy.ndimage import label
 
 from pyrion import TwoBitAccessor
 
+from modules.utils.twobit_alias import AliasedTwoBitAccessor
+
 from modules.utils.signal_processing import smooth_signal
 
 # Direct-query fallback: for a projected region no larger than this, if the query
@@ -512,7 +514,7 @@ def run_query_islands_scanner(
         print(f"# Query islands scanner workers: {max_concurrent}")
 
         logreg_model = load_logreg_model(logreg_model_path)
-        query_accessor = TwoBitAccessor(query_2bit_path)
+        query_accessor = AliasedTwoBitAccessor(query_2bit_path)
         query_chrom_sizes = dict(query_accessor.chrom_sizes())
 
         loop = asyncio.get_running_loop()

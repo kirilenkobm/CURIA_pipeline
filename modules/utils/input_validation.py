@@ -326,40 +326,28 @@ def build_chrom_name_remap(
     return remap
 
 
-def rewrite_chain_chrom_names(
-    chain_in: str,
-    chain_out: str,
-    remap: Dict[str, str],
-) -> Tuple[int, int]:
+def _mismatch_is_aliasable(
+    chain_ref: Set[str],
+    chain_query: Set[str],
+    ref_2bit_chroms: Set[str],
+    query_2bit_chroms: Set[str],
+) -> bool:
     """
-    Stream-copy a chain file, rewriting reference (tName) and query (qName)
-    chromosome names on header lines per ``remap``. Alignment blocks pass
-    through untouched. Output is gzip-compressed iff ``chain_out`` ends ``.gz``.
-
-    Returns (num_headers_seen, num_headers_rewritten).
+    True if a fatal chain<->2bit name mismatch is fully resolved by version-
+    suffix / ``chr``-prefix remapping — i.e. exactly what AliasedTwoBitAccessor
+    does at query-fetch time — rather than a genuine different-assembly
+    mismatch. Applies the remap to the chain names and rechecks for a fatal.
     """
-    n_headers = 0
-    n_fixed = 0
-    open_out = gzip.open if str(chain_out).endswith(".gz") else open
-    with _open_maybe_gzip(chain_in) as fin, open_out(chain_out, "wt") as fout:
-        for line in fin:
-            if line.startswith("chain"):
-                parts = line.split()
-                if len(parts) >= 8:
-                    n_headers += 1
-                    changed = False
-                    if parts[2] in remap:
-                        parts[2] = remap[parts[2]]
-                        changed = True
-                    if parts[7] in remap:
-                        parts[7] = remap[parts[7]]
-                        changed = True
-                    if changed:
-                        n_fixed += 1
-                        fout.write(" ".join(parts) + "\n")
-                        continue
-            fout.write(line)
-    return n_headers, n_fixed
+    remap = build_chrom_name_remap(chain_query, query_2bit_chroms)
+    remap.update(build_chrom_name_remap(chain_ref, ref_2bit_chroms))
+    if not remap:
+        return False
+    remapped_q = {remap.get(c, c) for c in chain_query}
+    remapped_r = {remap.get(c, c) for c in chain_ref}
+    recheck = check_chain_genome_compatibility(
+        ref_2bit_chroms, query_2bit_chroms, remapped_r, remapped_q,
+    )
+    return not any("FATAL:" in w for w in recheck)
 
 
 def precheck_chain_2bit_compatibility(
@@ -367,15 +355,15 @@ def precheck_chain_2bit_compatibility(
     ref_2bit_chroms: Set[str],
     query_2bit_chroms: Set[str],
     auto_fix: bool = False,
-    work_dir=None,
 ) -> str:
     """
     Fail-fast startup gate: sample chain headers and compare chromosome names
     to the (already-read) 2bit genome headers BEFORE any heavy work runs.
 
-    Returns the effective chain path — the original, or a corrected copy when
-    ``auto_fix`` normalized a version-suffix / ``chr``-prefix mismatch. Raises
-    ValidationError on an unfixable fatal mismatch.
+    Returns the (unchanged) chain path. On a fatal name mismatch: aborts unless
+    ``auto_fix`` and the mismatch is a version-suffix / ``chr``-prefix issue that
+    AliasedTwoBitAccessor will resolve at query-fetch time, in which case it logs
+    and proceeds. Raises ValidationError on an unfixable fatal mismatch.
     """
     print("# Checking chain-genome compatibility (fail-fast)...")
     chain_ref, chain_query, truncated = sample_chain_chromosomes(chain_path)
@@ -404,49 +392,35 @@ def precheck_chain_2bit_compatibility(
         raise ValidationError(
             "Chain chromosomes do not match the genome 2bit files (see above).\n"
             "If this is a naming-convention mismatch (accession version suffix or "
-            "'chr' prefix), re-run with --auto-fix-chrom-names to normalize the "
-            "chain and continue automatically."
+            "'chr' prefix), re-run with --auto-fix-chrom-names to resolve the names "
+            "on the fly and continue."
         )
 
-    # --- auto-fix path -----------------------------------------------------
+    # --- auto-fix path: resolve names on the fly, no file rewrite ----------
     remap = build_chrom_name_remap(chain_query, query_2bit_chroms)
     remap.update(build_chrom_name_remap(chain_ref, ref_2bit_chroms))
-    if not remap:
+    if not remap or not _mismatch_is_aliasable(
+        chain_ref, chain_query, ref_2bit_chroms, query_2bit_chroms
+    ):
         raise ValidationError(
             "Chain-genome mismatch is not an auto-fixable naming convention "
-            "(no version-suffix or chr-prefix mapping found). Verify that the "
-            "chain and 2bit files are from the same assemblies."
+            "(no version-suffix or chr-prefix mapping resolves it). Verify that "
+            "the chain and 2bit files are from the same assemblies."
         )
-
-    work = Path(work_dir) if work_dir is not None else Path(chain_path).parent
-    work.mkdir(parents=True, exist_ok=True)
-    corrected = work / "corrected_chain.chain.gz"
     example = next(iter(remap.items()))
     print(
-        f"# --auto-fix-chrom-names: remapping {len(remap)} chromosome names "
-        f"(e.g. {example[0]} -> {example[1]}) -> {corrected}"
+        f"#   --auto-fix-chrom-names: version/'chr'-prefix mismatch "
+        f"(e.g. {example[0]} -> {example[1]}); query-2bit names will be resolved "
+        f"on the fly at fetch time (no file written)."
     )
-    if corrected.exists() and corrected.stat().st_size > 0:
-        print(f"#   reusing existing corrected chain: {corrected}")
-    else:
-        n_headers, n_fixed = rewrite_chain_chrom_names(chain_path, str(corrected), remap)
-        print(f"#   rewrote {n_fixed}/{n_headers} chain headers")
-
-    # Re-verify (sampled) that the corrected chain clears the fatal mismatch.
-    r2, q2, _ = sample_chain_chromosomes(str(corrected))
-    recheck = check_chain_genome_compatibility(ref_2bit_chroms, query_2bit_chroms, r2, q2)
-    if any("FATAL:" in w for w in recheck):
-        for w in recheck:
-            print(w)
-        raise ValidationError("Auto-fix did not resolve the fatal chain-genome mismatch.")
-    print("#   ✓ auto-fix resolved the mismatch — continuing with corrected chain")
-    return str(corrected)
+    return chain_path
 
 
 def validate_chain_2bit_compatibility(
     chains,
     ref_2bit_path: str,
     query_2bit_path: str,
+    auto_fix: bool = False,
 ) -> None:
     """
     Fast chain-vs-2bit chromosome validation using already-loaded chains.
@@ -454,6 +428,10 @@ def validate_chain_2bit_compatibility(
     Extracts reference/query chromosome sets from the in-memory chain
     collection and compares against 2bit headers (instant reads).
     Raises ValidationError on fatal mismatches; prints warnings otherwise.
+
+    When ``auto_fix`` is set and a fatal mismatch is a version-suffix /
+    ``chr``-prefix naming issue that AliasedTwoBitAccessor resolves at
+    query-fetch time, it is downgraded to a warning instead of aborting.
     """
     chain_ref_chroms = set(chains.get_reference_chromosomes())
     chain_query_chroms = set(chains.get_query_chromosomes())
@@ -478,6 +456,14 @@ def validate_chain_2bit_compatibility(
     has_fatal = any("FATAL:" in w for w in warnings)
 
     if has_fatal:
+        if auto_fix and _mismatch_is_aliasable(
+            chain_ref_chroms, chain_query_chroms, ref_2bit_chroms, query_2bit_chroms
+        ):
+            print("# Chain-genome name mismatch — resolved on the fly by "
+                  "query-2bit aliasing (--auto-fix-chrom-names):")
+            for w in warnings:
+                print(w)
+            return
         print("# FATAL chain-genome incompatibility detected:")
         for w in warnings:
             print(w)
@@ -526,7 +512,6 @@ def validate_all_inputs(
     ref_2bit: str,
     query_2bit: str,
     auto_fix_chrom_names: bool = False,
-    work_dir=None,
 ) -> str:
     """
     Comprehensive input validation.
@@ -534,9 +519,10 @@ def validate_all_inputs(
     Raises ValidationError if critical issues found.
     Prints warnings for non-critical issues.
 
-    Returns the effective chain path to use for the run: the original ``chain``,
-    or a name-corrected copy when ``auto_fix_chrom_names`` normalized a
-    version-suffix / ``chr``-prefix mismatch against the query/reference 2bit.
+    Returns the chain path to use (unchanged). With ``auto_fix_chrom_names``, a
+    version-suffix / ``chr``-prefix chain<->2bit mismatch is tolerated and
+    resolved on the fly at query-fetch time (see AliasedTwoBitAccessor) rather
+    than aborting.
     """
     print("# Validating input files...")
 
@@ -607,7 +593,6 @@ def validate_all_inputs(
         ref_2bit_chroms,
         query_2bit_chroms,
         auto_fix=auto_fix_chrom_names,
-        work_dir=work_dir,
     )
 
     # 7. Check BED-genome compatibility

@@ -127,9 +127,9 @@ def parse_args():
         action="store_true",
         help="If the startup chain<->2bit check finds a naming-convention "
              "mismatch (accession version suffix, e.g. chain 'VIYN01000001' vs "
-             "2bit 'VIYN01000001.1', or a 'chr' prefix difference), auto-rewrite "
-             "the chain's chromosome names to match the 2bit and continue, instead "
-             "of aborting. Writes a corrected chain into the output dir.",
+             "2bit 'VIYN01000001.1', or a 'chr' prefix difference), resolve the "
+             "query-2bit names ON THE FLY at fetch time and continue, instead of "
+             "aborting. No files are written; the chain is left untouched.",
     )
     parser.add_argument(
         "--ref-islands-db",
@@ -409,7 +409,6 @@ def main():
                 args.ref_2bit,
                 args.query_2bit,
                 auto_fix_chrom_names=args.auto_fix_chrom_names,
-                work_dir=output_dir,
             )
         except ValidationError as e:
             print(f"\n# INPUT VALIDATION FAILED:\n{e}\n", file=sys.stderr)
@@ -533,6 +532,7 @@ def main():
         # are already in memory, 2bit headers are instant to read).
         validate_chain_2bit_compatibility(
             genome_chains, args.ref_2bit, args.query_2bit,
+            auto_fix=args.auto_fix_chrom_names,
         )
 
         # Step 2.5: Liftover reference islands → targeted query regions

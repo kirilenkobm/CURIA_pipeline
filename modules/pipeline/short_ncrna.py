@@ -12,6 +12,8 @@ import numpy as np
 
 import pyrion
 from pyrion import TwoBitAccessor
+
+from modules.utils.twobit_alias import AliasedTwoBitAccessor
 from pyrion.core.nucleotide_sequences import NucleotideSequence
 
 
@@ -658,7 +660,7 @@ def run_short_ncrna_scheduler(
         transcripts_by_id = {t.id: t for t in transcripts}
 
         ref_accessor = TwoBitAccessor(ref_2bit_path)
-        query_accessor = TwoBitAccessor(query_2bit_path)
+        query_accessor = AliasedTwoBitAccessor(query_2bit_path)
 
         loop = asyncio.get_running_loop()
         gpu = GPUClient(gpu_input_queue, gpu_output_queue, loop)

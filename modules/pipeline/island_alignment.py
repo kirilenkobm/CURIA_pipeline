@@ -41,6 +41,8 @@ import numpy as np
 
 from pyrion import TwoBitAccessor
 
+from modules.utils.twobit_alias import AliasedTwoBitAccessor
+
 # Import shared modules
 import sys
 from pathlib import Path as PathLib
@@ -831,7 +833,7 @@ def run_island_alignment_scheduler(
         print(f"# Provenance-aware matching: {len(clusters_data)} query regions")
 
         ref_acc = TwoBitAccessor(ref_2bit_path)
-        query_acc = TwoBitAccessor(query_2bit_path)
+        query_acc = AliasedTwoBitAccessor(query_2bit_path)
 
         loop = asyncio.get_running_loop()
         gpu = GPUClient(input_q, output_q, loop)
