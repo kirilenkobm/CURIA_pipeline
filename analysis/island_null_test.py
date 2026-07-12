@@ -184,6 +184,10 @@ async def _amain(args):
         stored.append(dm)
     n = len(E_ref)
     gpu.stop()
+    try:
+        proc.terminate(); proc.join(timeout=5)
+    except Exception:
+        pass
 
     # best-orientation distance for pair (i ref, j query): min over query fwd/rc.
     def dpair(i, j):
