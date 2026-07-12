@@ -164,6 +164,7 @@ rinalmo_version_outputs/*
 
 # temporary disable
 preprint_results/
+preprint_results__*
 
 # Old RNA-FM preprint materials (kept on disk, out of git)
 preprint__deprecated/
