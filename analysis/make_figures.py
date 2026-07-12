@@ -495,6 +495,7 @@ _SPECIES_META = {
     "HLcamDro2":{"name": "Dromedary",        "clade": "Laurasiatheria",   "div_mya": 94},  # Camelus dromedarius
     "equCab3":  {"name": "Horse",            "clade": "Laurasiatheria",   "div_mya": 94},
     "felCat9":  {"name": "Cat",              "clade": "Laurasiatheria",   "div_mya": 94},
+    "canFam5":  {"name": "Dog",              "clade": "Laurasiatheria",   "div_mya": 94},
     "HLmanJav2":{"name": "Pangolin",         "clade": "Laurasiatheria",   "div_mya": 94},  # Manis javanica
     "HLmyoMyo6":{"name": "Mouse-eared bat",  "clade": "Laurasiatheria",   "div_mya": 94},  # Myotis myotis
     "HLmyoLuc1":{"name": "Little brown bat", "clade": "Laurasiatheria",   "div_mya": 94},  # Myotis lucifugus
@@ -515,7 +516,7 @@ _SPECIES_META = {
 _PHYLO_ORDER = [
     "gorGor6", "rheMac10", "mm39", "rn7", "cavPor3", "HLoryCun3",
     "bosTau9", "susScr11", "HLhipAmp3", "HLbalEde1", "HLturTru5", "HLcamDro2",
-    "equCab3", "felCat9", "HLmanJav2", "HLmyoMyo6", "HLmyoLuc1", "HLpteVam2", "eriEur2",
+    "equCab3", "felCat9", "canFam5", "HLmanJav2", "HLmyoMyo6", "HLmyoLuc1", "HLpteVam2", "eriEur2",
     "dasNov3", "HLchoHof3", "HLoryAfeAfe2", "HLeleMax1", "HLproCap4",
     "monDom5", "HLdidVir1", "HLnotEug3",
 ]

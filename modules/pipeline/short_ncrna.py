@@ -13,7 +13,16 @@ import numpy as np
 import pyrion
 from pyrion import TwoBitAccessor
 
-from modules.utils.twobit_alias import AliasedTwoBitAccessor
+try:
+    from modules.utils.twobit_alias import AliasedTwoBitAccessor
+except ModuleNotFoundError:
+    # Some analysis/ scripts import this module standalone (with modules/pipeline
+    # on sys.path, not the repo root), so `modules` isn't a package there. Put the
+    # repo root on the path and retry.
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
+    from modules.utils.twobit_alias import AliasedTwoBitAccessor
 from pyrion.core.nucleotide_sequences import NucleotideSequence
 
 
