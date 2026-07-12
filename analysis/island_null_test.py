@@ -199,6 +199,19 @@ async def _amain(args):
     rank_pct = np.array([(D[i] < diag[i]).sum() / (n - 1) for i in range(n)])
     top1 = float((rank_pct == 0).mean())
     top5 = float((rank_pct <= 0.05).mean())
+    ranks = np.array([1 + int((D[i] < diag[i]).sum()) for i in range(n)])  # 1-based
+    mrr = float(np.mean(1.0 / ranks))
+    # reciprocal top-1: true query best in its ref row AND ref best in its query col
+    recip = float(np.mean([(D[i].argmin() == i) and (D[:, i].argmin() == i) for i in range(n)]))
+    # AUC: diagonal (true pairs) vs off-diagonal (false pairs); lower dist = better.
+    # Mann-Whitney with score = -dist (higher = more "true"). 0.5=chance, 1=perfect.
+    pos = -diag
+    neg = -D[~np.eye(n, dtype=bool)]
+    allv = np.concatenate([pos, neg])
+    order = allv.argsort(kind="mergesort")
+    rr = np.empty(len(allv)); rr[order] = np.arange(1, len(allv) + 1)
+    U = rr[:len(pos)].sum() - len(pos) * (len(pos) + 1) / 2
+    auc = float(U / (len(pos) * len(neg)))
 
     def med(x):
         return float(np.median(x))
@@ -211,6 +224,9 @@ async def _amain(args):
     print(f"  median rank-percentile = {med(rank_pct):.3f}   (real << 0.5)")
     print(f"  true partner is #1        : {top1*100:.0f}%")
     print(f"  true partner in top 5%    : {top5*100:.0f}%")
+    print(f"  MRR                       : {mrr:.3f}   (real -> 1; chance -> ~{1/n:.3f})")
+    print(f"  reciprocal top-1          : {recip*100:.0f}%")
+    print(f"  AUC true-vs-false pairs    : {auc:.3f}   (0.5=chance, 1=perfect)")
     print("--- ABOVE-COMPOSITION (dinucleotide shuffle) ---")
     print(f"  d_real  median = {med(diag):.3f}")
     print(f"  d_shuf  median = {med(d_shuf):.3f}")
@@ -226,6 +242,7 @@ async def _amain(args):
         "pair": str(args.pair), "n": n,
         "sanity_r": float(np.corrcoef(diag, stored)[0, 1]),
         "median_rank_pct": med(rank_pct), "top1": top1, "top5": top5,
+        "mrr": mrr, "reciprocal_top1": recip, "auc_true_vs_false": auc,
         "d_real_median": med(diag), "d_shuf_median": med(d_shuf),
         "frac_real_lt_shuf": float((diag < d_shuf).mean()),
     }
