@@ -155,38 +155,25 @@ def write_island_alignment_beds(
         ref_segments = merge_segments(ref_segments)
         query_segments = merge_segments(query_segments)
 
-        # Build reference transcript using pyrion
-        ref_transcript_id = f"{gene_id}_aligned"
-        ref_chrom = ref_segments[0]["chrom"]
-        ref_strand_val = ref_segments[0]["strand"]
-        ref_strand = Strand.PLUS if ref_strand_val == 1 or ref_strand_val == "+" else Strand.MINUS
+        # Emit ONE transcript per (chrom, strand) group. A gene whose islands
+        # map to more than one chromosome (paralogs / matches via different
+        # chains) must NOT be collapsed into a single BED12 record: that writes
+        # blocks from one chromosome under another chromosome's coordinate frame,
+        # pushing chromEnd past the chromosome end (UCSC rejects it). Group first.
+        def _emit(segments, out_list):
+            groups: dict = {}
+            for s in segments:
+                groups.setdefault((s["chrom"], s["strand"]), []).append(s)
+            multi = len(groups) > 1
+            for (chrom, strand_val), segs in sorted(groups.items()):
+                segs = sorted(segs, key=lambda x: x["start"])
+                blocks = np.array([[s["start"], s["end"]] for s in segs], dtype=np.int64)
+                strand = Strand.PLUS if strand_val == 1 or strand_val == "+" else Strand.MINUS
+                tid = f"{gene_id}_aligned" + (f"_{chrom}" if multi else "")
+                out_list.append(Transcript(blocks=blocks, strand=strand, chrom=chrom, id=tid))
 
-        # Create blocks array: [[start, end], [start, end], ...]
-        ref_blocks = np.array([[s["start"], s["end"]] for s in ref_segments], dtype=np.int64)
-
-        ref_transcript = Transcript(
-            blocks=ref_blocks,
-            strand=ref_strand,
-            chrom=ref_chrom,
-            id=ref_transcript_id,
-        )
-        ref_transcripts.append(ref_transcript)
-
-        # Build query transcript
-        query_transcript_id = f"{gene_id}_aligned"
-        query_chrom = query_segments[0]["chrom"]
-        query_strand_val = query_segments[0]["strand"]
-        query_strand = Strand.PLUS if query_strand_val == 1 or query_strand_val == "+" else Strand.MINUS
-
-        query_blocks = np.array([[s["start"], s["end"]] for s in query_segments], dtype=np.int64)
-
-        query_transcript = Transcript(
-            blocks=query_blocks,
-            strand=query_strand,
-            chrom=query_chrom,
-            id=query_transcript_id,
-        )
-        query_transcripts.append(query_transcript)
+        _emit(ref_segments, ref_transcripts)
+        _emit(query_segments, query_transcripts)
 
     # Create TranscriptsCollection and save to BED12
     ref_collection = TranscriptsCollection(transcripts=ref_transcripts)
