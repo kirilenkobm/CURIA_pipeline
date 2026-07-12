@@ -171,6 +171,7 @@ async def _amain(args):
             is_top1=bool(np.argmin(dists) == assigned_idx),
             beats_far=beats_far, pct_far=pct_far, margin_far=margin_far,
             displacement=displacement, d_assigned=float(d_assigned), L=L,
+            locus_len=int(le - ls),
         ))
         stored = float(r.diag_mmd)
         sanity.append((abs(d_assigned - stored), stored, d_assigned, gid,
@@ -200,6 +201,28 @@ async def _amain(args):
     print("  REAL     : beats-far high, pctile_far << 0.5, displacement ~ 0, margin > 0")
     print("  ARTIFACT : beats-far ~ chance, pctile_far ~ 0.5, big displacement, margin ~ 0")
 
+    # --- STRATIFIED BY SEARCH-SPACE SIZE (n_far): the key question is whether
+    # specificity stays ABOVE CHANCE as the number of same-locus alternatives grows.
+    # chance for beats-all with k non-overlapping alternatives = 1/(k+1).
+    R = R.copy()
+    R["chance"] = 1.0 / (R["n_far"] + 1)
+    bins = [(1, 1), (2, 4), (5, 9), (10, 19), (20, 10**9)]
+    R = R[R["n_far"] >= 1]        # n_far==0 loci have no independent alternative
+    print("--- STRATIFIED BY n_far (independent same-locus alternatives) ---")
+    print(f"  {'n_far':>7} {'n':>5} {'beats':>6} {'chance':>7} {'enrich':>6} "
+          f"{'pctile':>6} {'margin':>7} {'displ':>6}")
+    for lo, hi in bins:
+        b = R[(R.n_far >= lo) & (R.n_far <= hi)]
+        if len(b) == 0:
+            continue
+        beats = b.beats_far.mean(); ch = b.chance.mean()
+        lab = f"{lo}" if lo == hi else (f"{lo}+" if hi > 10**8 else f"{lo}-{hi}")
+        print(f"  {lab:>7} {len(b):>5} {beats:>6.2f} {ch:>7.2f} "
+              f"{beats/ch if ch else float('nan'):>6.1f}x {b.pct_far.median():>6.3f} "
+              f"{b.margin_far.median():>7.3f} {b.displacement.median():>6.0f}")
+    print("  (REAL: enrich stays >> 1x and pctile ~0 as n_far grows; "
+          "ARTIFACT: enrich -> 1x, pctile -> 0.5)")
+
     print("--- LARGEST SANITY DISCREPANCIES (recomputed vs stored diag_mmd) ---")
     sanity.sort(reverse=True)
     print(f"  {'|delta|':>7}  {'stored':>6}  {'recomp':>6}  gene / ref / query")
@@ -219,7 +242,10 @@ async def _amain(args):
                    median_margin_far=float(R.margin_far.median()),
                    sanity_within_0p02=float(good))
     (outdir / f"searchspace_null_{tag}.json").write_text(json.dumps(summary, indent=2))
-    print(f"# wrote {outdir/f'searchspace_null_{tag}.json'}")
+    # per-island CSV so the plots can be rebuilt WITHOUT re-running the GPU
+    R.assign(pair=tag).to_csv(outdir / f"searchspace_null_{tag}.csv", index=False)
+    print(f"# wrote {outdir/f'searchspace_null_{tag}.json'} and .csv "
+          f"(plot with: analysis/plot_searchspace_null.py)")
 
 
 def main():
