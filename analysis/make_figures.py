@@ -625,7 +625,21 @@ def _fig6a_heatmap(ax, best, gene_bare, gene_sym, present, cmap, show_ylabels):
     import pandas as pd
     g = best[best["gene_bare"] == gene_bare]
     if g.empty:
-        _todo(ax, f"{gene_sym}\n(no islands)")
+        # draw an all-missing species grid so the row keeps its y-axis / species
+        # labels (esp. when this empty gene is the leftmost panel in a row)
+        # instead of blanking them; annotate that there are no islands.
+        empty_cmap = cmap.copy(); empty_cmap.set_bad("#e6e6e6")
+        ax.imshow(np.ma.masked_all((len(present), 1)), aspect="auto",
+                  cmap=empty_cmap, vmin=_DIST_VMIN, vmax=_DIST_VMAX)
+        ax.set_xticks([])
+        ax.set_yticks(range(len(present)))
+        ax.set_yticklabels([_meta(s)["name"] for s in present], fontsize=6.5)
+        if not show_ylabels:
+            ax.set_yticklabels([])
+        ax.text(0.5, 0.5, "no islands", transform=ax.transAxes,
+                ha="center", va="center", fontsize=7, color="#999")
+        ax.set_title(gene_sym, loc="center", fontsize=8, fontweight="bold")
+        ax.tick_params(length=0)
         return None
     cores = (g.drop_duplicates("core_id").sort_values("core_start")["core_id"].tolist())
     piv = (g.pivot_table(index="species", columns="core_id", values="diag_mmd",
