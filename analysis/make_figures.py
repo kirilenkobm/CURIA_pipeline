@@ -209,7 +209,7 @@ def fig1(outdir: Path, results_dir: Optional[Path]) -> None:
                        ("D", "best-hit vs distant control")]:
             _todo(axd[k], f"run analysis/compute_fig1_embeddings.py\n({msg})")
     axd["A"].set_title("Per-nucleotide embeddings", loc="left")
-    axd["B"].set_title("Signal vs background", loc="left")
+    axd["B"].set_title("Illustrative embedding separability", loc="left")
     axd["C"].set_title("Local MMD search", loc="left")
     fs.panel_label(axd["A"], "A"); fs.panel_label(axd["B"], "B"); fs.panel_label(axd["C"], "C")
     if not have_cache:
@@ -263,7 +263,7 @@ def _sw_panel(ax, H, title, vmax, score):
 
 
 def _fig3a_schematic(ax):
-    """Panel A schematic: RNA-like score along a reference transcript -> islands
+    """Panel A schematic: detector score along a reference transcript -> islands
     (thresholded) -> chain-guided projection -> query islands. Islands are derived
     from where the score exceeds threshold, so they align by construction."""
     from matplotlib.patches import Rectangle, ConnectionPatch
@@ -278,7 +278,7 @@ def _fig3a_schematic(ax):
             fontweight="bold", ha="right", va="center")
     ax.text(63, 94, r"reference genomic position $\rightarrow$", fontsize=8, ha="center")
 
-    # RNA-like score: gaussians whose peaks define the islands
+    # Detector score: gaussians whose peaks define the islands
     thr, base = 56.0, 46.0
     peaks = [(35, 21, 2.6), (50, 18, 2.3), (83, 22, 3.1)]
     xg = np.linspace(28, 96, 600)
@@ -289,7 +289,7 @@ def _fig3a_schematic(ax):
     ax.text(96.5, thr, "threshold", fontsize=8, ha="left", va="center")
     ax.text(29.5, 68, "0.5", fontsize=7, ha="right", va="center", color="0.5")
     ax.plot(xg, yg, color=orange, lw=1.4, zorder=3)
-    ax.text(LBL, 58, "RNA-like score\n(embeddings-based)", fontsize=8,
+    ax.text(LBL, 58, "embedding-based\ndetector score", fontsize=8,
             fontweight="bold", ha="right", va="center")
 
     # supra-threshold spans -> islands (aligned with the peaks by construction)
@@ -307,7 +307,7 @@ def _fig3a_schematic(ax):
     for x0, x1 in spans:
         ax.add_patch(Rectangle((x0, 42), x1 - x0, 30, color=shade, zorder=0))
         ax.add_patch(Rectangle((x0, 28), x1 - x0, 5, color=blue))
-    ax.text(LBL, 30.5, "structured islands", fontsize=8, fontweight="bold",
+    ax.text(LBL, 30.5, "detector-positive islands", fontsize=8, fontweight="bold",
             ha="right", va="center")
 
     # candidate query regions (broad, group nearby islands) + projection arrows
@@ -352,7 +352,7 @@ def fig3(outdir: Path, results_dir: Optional[Path]) -> None:
         meta = json.loads(_FIG3B_CACHE.with_suffix(".json").read_text())
         Hm, Hc = _sw_accum(d["match_cos"]), _sw_accum(d["ctrl_cos"])
         vmax = float(Hm.max())
-        im = _sw_panel(axd["M"], Hm, f"{meta['gene']} core: human × mouse",
+        im = _sw_panel(axd["M"], Hm, f"{meta['gene']} match: human × mouse",
                        vmax, meta["match_score"])
         _sw_panel(axd["C"], Hc, "vs unrelated island", vmax, meta["ctrl_score"])
         fig.colorbar(im, ax=[axd["M"], axd["C"]],
@@ -679,9 +679,15 @@ def _fig6b_reproducibility(ax, best, n_species):
     for k, f in zip(ks, frac):
         n = int((per_core >= k).sum())
         ax.text(k, f + 0.015, f"{n}", ha="center", va="bottom", fontsize=5.5)
-    ax.set_xticks(ks)
-    ax.set_xticklabels([f"$\\geq${k}" for k in ks], fontsize=6.5)
-    ax.set_xlabel(f"Species with a match (of {n_species})")
+    # The bars encode >=k by construction. Repeating the >= sign at all 19
+    # positions makes the labels collide at manuscript scale, so state the
+    # threshold once in the axis title and label alternate integer ticks.
+    shown = ks[::2]
+    if shown[-1] != ks[-1]:
+        shown = np.append(shown, ks[-1])
+    ax.set_xticks(shown)
+    ax.set_xticklabels([str(k) for k in shown], fontsize=6.5)
+    ax.set_xlabel(f"Minimum species with a match ($\\geq k$ of {n_species})")
     ax.set_ylabel("Fraction of cores")
     ax.set_ylim(0, 1.12)
     ax.text(0.97, 0.95, f"{total:,} cores", transform=ax.transAxes,
@@ -707,7 +713,8 @@ def _fig6c_phylo(ax, df, present):
                 markeredgewidth=0.6)
     ax.set_xticks(x)
     ax.set_xticklabels([f"{_meta(s)['name']} ({_meta(s)['div_mya']} My)"
-                        for s in sp_ok], fontsize=6, rotation=40, ha="right")
+                        for s in sp_ok], fontsize=5.5, rotation=50, ha="right",
+                       rotation_mode="anchor")
     ax.set_ylabel("Median cosine-SW distance")
     ax.set_ylim(bottom=0)
 
@@ -722,11 +729,11 @@ def fig6(outdir: Path, results_dir: Optional[Path]) -> None:
     # Explicit gridspec (not mosaic) so Panel A's inter-heatmap gap is tight and
     # the number of example genes can scale freely.
     ng = len(_FIG6A_GENES)
-    fig = plt.figure(figsize=(fs.FULL_WIDTH, 5.4), layout="constrained")
+    fig = plt.figure(figsize=(fs.FULL_WIDTH, 5.65), layout="constrained")
     gs = fig.add_gridspec(2, 1, height_ratios=[1.05, 1.0], hspace=0.14)
     gsA = gs[0].subgridspec(1, ng, wspace=0.06)
     axesA = [fig.add_subplot(gsA[0, i]) for i in range(ng)]
-    gsBC = gs[1].subgridspec(1, 2, width_ratios=[1.0, 1.0], wspace=0.28)
+    gsBC = gs[1].subgridspec(1, 2, width_ratios=[0.88, 1.12], wspace=0.30)
     axB = fig.add_subplot(gsBC[0, 0])
     axC = fig.add_subplot(gsBC[0, 1])
 
@@ -757,7 +764,8 @@ def fig6(outdir: Path, results_dir: Optional[Path]) -> None:
 
     fs.panel_label(axesA[0], "A", dx=-0.55)
     fs.panel_label(axB, "B", dx=-0.14)
-    fs.panel_label(axC, "C", dx=-0.12)
+    # Keep C above the axes: an outside-left label collides with the top y tick.
+    fs.panel_label(axC, "C", dx=-0.01, dy=1.13)
     fs.save(fig, outdir / "fig6_cores.pdf")
     print(f"wrote {outdir/'fig6_cores.pdf'} ({len(present)} species: {', '.join(present)})")
 

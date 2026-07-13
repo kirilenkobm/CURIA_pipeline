@@ -37,6 +37,7 @@ import asyncio
 import json
 import multiprocessing as mp
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -141,6 +142,7 @@ def start_executor(model, max_batch, min_batch, max_tokens):
 
 
 async def _amain(args):
+    started = time.monotonic()
     cfg = IslandAlignmentConfig.for_model(args.model)
     df = pd.read_csv(Path(args.pair) / "island_alignment_results.tsv", sep="\t")
     df = df[df["type"] == "match"].reset_index(drop=True)
@@ -168,13 +170,14 @@ async def _amain(args):
         if len(rs) < 40 or len(qs) < 40:
             continue
         rows.append((i, rs, qs, float(r.diag_mmd)))
-    print(f"# usable islands: {len(rows)}")
+    print(f"# usable islands: {len(rows)}", flush=True)
 
     # one embedding pass: ref, query (fwd+rc), dinuc-shuffle(query) (fwd+rc).
     # Both orientations everywhere so the diagonal gets no unfair 2-orientation
     # advantage over the shuffle/off-diagonal controls.
     E_ref, E_qf, E_qr, E_shf, E_shr, stored = [], [], [], [], [], []
-    for i, rs, qs, dm in rows:
+    progress_every = max(1, len(rows) // 20)
+    for done, (i, rs, qs, dm) in enumerate(rows, 1):
         sh = dinuc_shuffle(qs, rng)
         E_ref.append(await emb(f"r{i}", rs))
         E_qf.append(await emb(f"qf{i}", qs))
@@ -182,6 +185,12 @@ async def _amain(args):
         E_shf.append(await emb(f"shf{i}", sh))
         E_shr.append(await emb(f"shr{i}", revcomp(sh)))
         stored.append(dm)
+        if done == len(rows) or done % progress_every == 0:
+            elapsed = time.monotonic() - started
+            rate = done / elapsed if elapsed else 0.0
+            eta = (len(rows) - done) / rate if rate else 0.0
+            print(f"# embeddings: {done}/{len(rows)} ({100*done/len(rows):.0f}%) "
+                  f"elapsed={elapsed/60:.1f}m eta={eta/60:.1f}m", flush=True)
     n = len(E_ref)
     gpu.stop()
     try:
@@ -193,7 +202,18 @@ async def _amain(args):
     def dpair(i, j):
         return min(_dist(E_ref[i], E_qf[j], cfg), _dist(E_ref[i], E_qr[j], cfg))
 
-    D = np.array([[dpair(i, j) for j in range(n)] for i in range(n)])
+    distance_rows = []
+    distance_started = time.monotonic()
+    for i in range(n):
+        distance_rows.append([dpair(i, j) for j in range(n)])
+        done = i + 1
+        if done == n or done % max(1, n // 20) == 0:
+            elapsed = time.monotonic() - distance_started
+            rate = done / elapsed if elapsed else 0.0
+            eta = (n - done) / rate if rate else 0.0
+            print(f"# distance matrix: {done}/{n} rows ({100*done/n:.0f}%) "
+                  f"elapsed={elapsed/60:.1f}m eta={eta/60:.1f}m", flush=True)
+    D = np.array(distance_rows)
     diag = np.diag(D).copy()
     d_shuf = np.array([min(_dist(E_ref[i], E_shf[i], cfg),
                            _dist(E_ref[i], E_shr[i], cfg)) for i in range(n)])

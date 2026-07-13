@@ -149,6 +149,7 @@ def build(results_dir: Path, min_species: int | None, min_len: int,
                                loci[loci["biotype"] == "protein_coding"])
     genes = genes.merge(prox, on="gene_bare", how="left")
     genes["overlap_category"] = genes["overlap_category"].fillna("unknown")
+    genes["coding_partners"] = genes["coding_partners"].fillna("").replace("", ".")
     genes = genes.sort_values(["overlap_category", "best_mean_dist"])
 
     cols = ["gene_bare", "gene_name", "overlap_category", "n_cores", "max_species",

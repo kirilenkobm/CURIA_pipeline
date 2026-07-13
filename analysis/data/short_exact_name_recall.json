@@ -1,0 +1,7 @@
+{
+  "criterion": "exact case-insensitive gene name; prediction overlaps same-name mouse exon",
+  "n_geometry_eligible_non_protein_coding": 9247,
+  "n_with_named_mouse_counterpart": 446,
+  "n_recovered": 373,
+  "rough_named_counterpart_recall": 0.8363228699551569
+}

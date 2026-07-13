@@ -38,6 +38,14 @@ evaluation and transfer. Finally, embedding representations of short ncRNAs can 
 context-dependent \citep{chenInterpretableRNAFoundation2022}, making direct
 comparison sensitive to boundary definition.
 
+This ambiguity is especially acute for lncRNAs. Their annotated loci can span
+tens of kilobases, often with localized functional or structurally constrained
+domains separated by weakly constrained sequence. Whole-locus comparison can
+therefore dilute the detectable signal, and the locus may exceed the sequence
+length supported by current RNA foundation models. This motivates searching for
+localized candidate cores rather than requiring end-to-end transcript
+correspondence.
+
 For example, two ncRNA loci may exhibit low primary sequence similarity while
 preserving a similar structural pattern:
 \begin{verbatim}
@@ -51,43 +59,42 @@ whereas embedding-based representations may capture similarities associated with
 shared structural patterns.
 
 \subsection{Limitations of existing approaches}
-Existing approaches address complementary aspects of ncRNA detection and
-comparison but do not provide a scalable framework for genome-wide ncRNA
-correspondence analysis. Covariance models (e.g., Infernal
+Existing approaches solve related but distinct problems. Covariance models (e.g., Infernal
 \citep{nawrockiInfernal11100fold2013}/Rfam \citep{ontiveros-palaciosRfam15RNA2025})
 offer high specificity but rely on curated families and do not generalize to
 genome-wide discovery. Structure-based alignment methods such as LocARNA
 \citep{willLocARNA20Versatile2024} and RNAforester
-\citep{hochsmannLocalSimilarityRNA2003} capture structural similarity but are
-computationally expensive and not suitable for large-scale analysis. Genome-wide
+\citep{hochsmannLocalSimilarityRNA2003} capture explicit sequence--structure
+similarity between supplied RNAs. \curia{} instead starts from genomes, a
+reference annotation, and alignment chains, and localizes candidate corresponding
+elements without requiring a pre-specified family model or structure. Genome-wide
 methods such as RNAz \citep{gruberRNAz20Improved2010}, EvoFold
 \citep{pedersenIdentificationClassificationConserved2006}, and FEELnc
 \citep{wucherFEELncToolLong2017} identify candidate RNA elements or lncRNA loci,
 but focus on detection or annotation rather than establishing cross-species
 correspondence. Comparative genome alignments define candidate homologous
 intervals but do not provide an RNA-specific measure of similarity or a principled
-way to localize relevant signal
+way to localize relevant embedding-supported signal
 \citep{zoonomiaconsortiumComparativeGenomicsMultitool2020,armstrongProgressiveCactusMultiplegenome2020}.
-As a result, existing approaches either lack scalability, require strong prior
-knowledge, or do not establish explicit correspondence between loci at genome
-scale. Together, these limitations motivate a formulation that (i) restricts the
-search space via synteny and (ii) defines similarity in a representation space not
-tied to primary sequence.
+The distinguishing objective here is annotation transfer with localized
+RNA-specific evidence: first identify the relevant syntenic locus, then find and
+compare subregions with embedding patterns characteristic of annotated compact
+structured ncRNAs.
 
 \subsection{Synteny-constrained embedding matching}
-A key missing component is the integration of synteny with embedding-based
-similarity. Genome alignment chains define a constrained search space of candidate
-loci, reducing the combinatorial complexity of cross-species comparison
+An approach that appears to be missing is the use of pretrained RNA-language-model
+representations as the similarity signal within syntenically constrained genomic
+search regions. Genome alignment chains already identify regions that share
+genomic context and therefore indicate where a corresponding ncRNA should be sought
 \citep{zoonomiaconsortiumComparativeGenomicsMultitool2020,armstrongProgressiveCactusMultiplegenome2020}.
 At the same time, RNA foundation models such as RNA-FM
 \citep{chenInterpretableRNAFoundation2022}, RiNALMo
 \citep{penicRiNALMoGeneralpurposeRNA2025}, and related embedding approaches such as
 RNABERT \citep{akiyamaInformativeRNABase2022} provide learned representations
-associated with RNA family identity, structure-related signal, and downstream
-predictive tasks \citep{vahabAdvancingNoncodingRNA2025}. Without synteny
-constraints, embedding-based matching would require genome-wide comparison over a
-vastly larger search space, making the problem computationally expensive and
-increasing the risk of false positives. Combining these sources of information
+associated with RNA family identity, secondary-structure-related properties, and downstream
+predictive tasks \citep{vahabAdvancingNoncodingRNA2025}. Applying these models as
+an unconstrained genome-wide scanner would be impractical; using chain-defined
+regions makes local RNA-specific comparison tractable. Combining these sources of information
 enables tractable comparison of ncRNA loci in settings where primary-sequence
 conservation is limited.
 
@@ -96,8 +103,8 @@ conservation is limited.
   % Generated by analysis/make_figures.py (fig1_embeddings) from RiNALMo
   % embeddings cached in analysis/data/fig1_embeddings.npz.
   \includegraphics[width=\linewidth]{fig1_embeddings.pdf}
-  \caption{RiNALMo embedding representations reflect structure-related similarity
-  of ncRNAs and support local matching. \textbf{(A)} Per-nucleotide embeddings
+  \caption{Illustrative embedding behavior supporting local ncRNA comparison.
+  \textbf{(A)} Per-nucleotide embeddings
   (matching PCA, first two components) for two human tRNA-Asn-GTT gene copies
   (\textit{tRNA-Asn-GTT-chr1-139} and \textit{-140}, $74$\,nt each) and one
   pre-miRNA (\textit{MIR103A1}, ENST00000362168, $110$\,nt), all from the human
@@ -107,7 +114,8 @@ conservation is limited.
   embeddings to distinguish annotated hg38 ncRNAs (purple; tRNA, snoRNA, miRNA)
   from background sequences (gray; intergenic and dinucleotide-shuffled): ncRNAs
   score near $1$ and background near $0$ (AUC ${\approx}0.96$), showing the
-  embeddings separate RNA-derived sequence from genomic background. Panel (B) is
+  embeddings separate the selected RNA-derived sequences from genomic background.
+  Panel (B), titled ``Illustrative embedding separability'' within the figure, is
   an illustrative separability experiment on a small balanced set and is not the
   production island detector used in the pipeline (Section~\ref{sec:refisland}),
   which is trained on a different biotype set and negatives and operates at a
@@ -139,7 +147,7 @@ is represented as a set of per-position embedding vectors and similarity is
 quantified using Maximum Mean Discrepancy (MMD)
 \citep{grettonKernelTwoSampleTest2012}, a distribution-level measure over
 embeddings; low MMD indicates similar embedding distributions. For long ncRNAs,
-each localized subregion is embedded once and matched at nucleotide resolution by
+localized detector-positive subregions are matched by token-level local alignment using
 Smith--Waterman alignment \citep{smithIdentificationCommonMolecular1981} over the
 per-token cosine similarity dotplot. Both formulations avoid explicit
 primary-sequence alignment and provide continuous scores for ranking candidate
@@ -153,8 +161,8 @@ In this work, we:
         matching in embedding space.
   \item Introduce \curia{}, a pipeline combining chain-based locus projection with
         embedding-based detection and comparison of localized signal.
-  \item Propose an island-based representation for long ncRNAs to localize
-        cross-species signal.
+  \item Introduce an island-based representation for long ncRNAs that separates
+        detectable candidate cores from intervening sequence not required to align.
   \item Develop a boundary refinement strategy for short ncRNAs.
   \item Demonstrate a genome-scale proof of concept across multiple mammalian
         genomes, showing that this approach can recover cross-species ncRNA

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tier B: within-locus positional null (winner's-curse test) for island matching.
+"""Within-locus positional null (winner's-curse test) for island matching.
 
 The other-gene specificity test (island_null_test.py) uses too-easy negatives:
 beating OTHER genes' islands doesn't prove the assigned position isn't just the
@@ -28,6 +28,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -71,6 +72,7 @@ def _pick_locus(regs, qchrom, qstart, qend):
 
 
 async def _amain(args):
+    started = time.monotonic()
     cfg = IslandAlignmentConfig.for_model(args.model)
     pair = Path(args.pair)
     df = pd.read_csv(pair / "island_alignment_results.tsv", sep="\t")
@@ -94,7 +96,9 @@ async def _amain(args):
     recs = []          # per ref-island results
     sanity = []        # (|delta|, stored, recomputed, gene, ref, query)
     skipped = 0
-    for _, r in df.iterrows():
+    total = len(df)
+    progress_every = max(1, total // 20)
+    for row_no, (_, r) in enumerate(df.iterrows(), 1):
         gid = r.gene_id
         regs = locus_map.get(gid)
         if regs is None:
@@ -177,6 +181,13 @@ async def _amain(args):
         sanity.append((abs(d_assigned - stored), stored, d_assigned, gid,
                        f"{r.ref_chrom}:{int(r.ref_start)}-{int(r.ref_end)}",
                        f"{lc}:{assigned[0]}-{assigned[1]}"))
+        if row_no == total or row_no % progress_every == 0:
+            elapsed = time.monotonic() - started
+            rate = row_no / elapsed if elapsed else 0.0
+            eta = (total - row_no) / rate if rate else 0.0
+            print(f"# within-locus: {row_no}/{total} rows ({100*row_no/total:.0f}%), "
+                  f"usable={len(recs)} skipped={skipped} elapsed={elapsed/60:.1f}m "
+                  f"eta={eta/60:.1f}m", flush=True)
 
     gpu.stop()
     try:
@@ -184,16 +195,23 @@ async def _amain(args):
     except Exception:
         pass
 
-    R = pd.DataFrame(recs)
-    n = len(R)
-    print("\n============ WITHIN-LOCUS POSITIONAL NULL (Tier B) ============")
+    R_all = pd.DataFrame(recs)
+    n = len(R_all)
+    print("\n================ WITHIN-LOCUS POSITIONAL NULL =================")
     print(f"pair: {args.pair}   ref-islands tested: {n}   skipped: {skipped}   model={args.model}")
     if n == 0:
         print("no usable islands (locus map / coords)."); return
-    print(f"median candidates / locus : {int(R.ncand.median())}   median non-overlapping: {int(R.n_far.median())}")
+    print(f"median candidates / locus : {int(R_all.ncand.median())}   "
+          f"median non-overlapping: {int(R_all.n_far.median())}")
     print("--- Does the ASSIGNED position win inside its own locus? ---")
-    print(f"  assigned is #1 of all candidates      : {R.is_top1.mean()*100:.0f}%")
+    print(f"  assigned is #1 of all candidates      : {R_all.is_top1.mean()*100:.0f}%")
+    # Loci without a non-overlapping alternative pass `beats_far` by definition,
+    # so exclude them from every winner's-curse summary.
+    R = R_all[R_all["n_far"] >= 1].copy()
+    R["chance"] = 1.0 / (R["n_far"] + 1)
+    print(f"  loci with independent alternatives    : {len(R)}/{n}")
     print(f"  assigned beats ALL non-overlapping pos: {R.beats_far.mean()*100:.0f}%   <-- winner's-curse pass")
+    print(f"  mean chance for beating all positions : {R.chance.mean()*100:.0f}%")
     print(f"  median pctile among non-overlapping   : {R.pct_far.median():.3f}   (0=best, 0.5=random)")
     print(f"  median displacement to abs-best (bp)  : {R.displacement.median():.0f}   (0 = peak at true position)")
     print(f"  median margin (best_far - assigned)   : {R.margin_far.median():.3f}   (>0 => assigned better than any far pos)")
@@ -204,10 +222,7 @@ async def _amain(args):
     # --- STRATIFIED BY SEARCH-SPACE SIZE (n_far): the key question is whether
     # specificity stays ABOVE CHANCE as the number of same-locus alternatives grows.
     # chance for beats-all with k non-overlapping alternatives = 1/(k+1).
-    R = R.copy()
-    R["chance"] = 1.0 / (R["n_far"] + 1)
     bins = [(1, 1), (2, 4), (5, 9), (10, 19), (20, 10**9)]
-    R = R[R["n_far"] >= 1]        # n_far==0 loci have no independent alternative
     print("--- STRATIFIED BY n_far (independent same-locus alternatives) ---")
     print(f"  {'n_far':>7} {'n':>5} {'beats':>6} {'chance':>7} {'enrich':>6} "
           f"{'pctile':>6} {'margin':>7} {'displ':>6}")
@@ -234,16 +249,19 @@ async def _amain(args):
 
     outdir = REPO / "analysis" / "scratch"; outdir.mkdir(parents=True, exist_ok=True)
     tag = pair.name
-    summary = dict(pair=str(pair), n=n, skipped=skipped,
-                   assigned_top1=float(R.is_top1.mean()),
+    summary = dict(pair=str(pair), n=n, n_with_independent_alternatives=len(R),
+                   skipped=skipped,
+                   assigned_top1=float(R_all.is_top1.mean()),
                    beats_all_far=float(R.beats_far.mean()),
+                   mean_chance_beats_all=float(R.chance.mean()),
                    median_pctile_far=float(R.pct_far.median()),
                    median_displacement=float(R.displacement.median()),
                    median_margin_far=float(R.margin_far.median()),
                    sanity_within_0p02=float(good))
     (outdir / f"searchspace_null_{tag}.json").write_text(json.dumps(summary, indent=2))
     # per-island CSV so the plots can be rebuilt WITHOUT re-running the GPU
-    R.assign(pair=tag).to_csv(outdir / f"searchspace_null_{tag}.csv", index=False)
+    # Preserve all records; the plotting code performs its own n_far >= 1 filter.
+    R_all.assign(pair=tag).to_csv(outdir / f"searchspace_null_{tag}.csv", index=False)
     print(f"# wrote {outdir/f'searchspace_null_{tag}.json'} and .csv "
           f"(plot with: analysis/plot_searchspace_null.py)")
 

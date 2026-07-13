@@ -4,18 +4,18 @@ protein-coding genes but remains challenging for non-coding RNAs (ncRNAs) due to
 weak sequence conservation, ambiguous transcript boundaries, and incomplete
 annotations. Here we present \curia{}, a pipeline for cross-species ncRNA
 annotation that combines genome alignment chains with embedding-based
-representations derived from RNA foundation models. \curia{} formulates
+representations derived from the RiNALMo RNA foundation model. \curia{} formulates
 cross-species ncRNA correspondence as synteny-constrained matching in embedding
 space. It first identifies candidate loci using a simplified TOGA-based
-projection, then detects localized subregions (``islands'') within transcripts,
-and finally establishes cross-species correspondence using similarity of
-embedding representations. Because the embedding model is largely stable
-across sequence context, each island is embedded once and matched at nucleotide
-resolution. Using a conservative annotation-based evaluation across 19
-mammalian genomes, \curia{} identified short ncRNA loci; in the human-to-mouse
-comparison, 52.4\% of predicted loci overlapped an annotated exon (any overlap).
-It further uncovered ${\sim}230$ candidate intergenic loci potentially
-corresponding to conserved ncRNA elements absent from current annotations. These
+projection, then detects localized regions whose embedding patterns resemble
+those of annotated compact structured ncRNAs (``islands'') within long
+transcripts, and finally establishes cross-species correspondence by
+local alignment in embedding space. We applied \curia{} to 19 human-to-query
+genome pairs. In the detailed human-to-mouse annotation comparison,
+52.4\% of predicted short-ncRNA loci overlapped an annotated exon (any overlap).
+From 34{,}846 annotated human lncRNA loci, a stringent multi-species funnel
+identified 1{,}693 loci with a recurrent embedding-supported region in at least
+17 of 19 query genomes. These
 results suggest that combining synteny with embedding-based similarity can
 complement conventional sequence conservation for cross-species ncRNA annotation
 in settings characterized by weak or heterogeneous primary-sequence conservation,
