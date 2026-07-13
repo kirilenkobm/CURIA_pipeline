@@ -30,9 +30,15 @@ lncRNA homology are most directly comparable: slncky infers lncRNA orthologs fro
 whole-genome alignments using sequence-level conservation signatures, and lncHOME
 groups lncRNAs into families based on conserved genomic position combined with
 patterns of RNA-binding-protein motifs.
-% TODO(authors): add \cite keys for slncky (Chen et al., Genome Biol. 2016) and
-% lncHOME to CURIA_Preprint.bib, then cite them on the sentence above. No bib
-% entries currently exist; not fabricating citation metadata here.
+% TODO(authors): add these to Zotero (by DOI) -> re-export CURIA_Preprint.bib,
+% then \cite them on the "slncky ... and lncHOME ..." sentence above:
+%   slncky : Chen et al., "Evolutionary analysis across mammals reveals distinct
+%            classes of long non-coding RNAs", Genome Biol. 2016;17:19.
+%            doi:10.1186/s13059-016-0880-9
+%   lncHOME: "Computational prediction and experimental validation identify
+%            functionally conserved lncRNAs from zebrafish to human", Nat. Genet.
+%            2024. doi:10.1038/s41588-023-01620-7 (PMID 38195860)
+% Not adding \cite now: keys don't exist yet and would break the build.
 Both rely on primary-sequence or motif-level signals to define homology. In
 contrast, \curia{} does not require sequence-level conservation within the ncRNA
 itself: it combines syntenic constraints with embedding-based similarity, so

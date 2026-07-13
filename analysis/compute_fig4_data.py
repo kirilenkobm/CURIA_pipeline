@@ -112,7 +112,7 @@ def _annotation_overlap(sh, args):
         beds.append(trna)
     annos = [read_bed12_file(str(b)) for b in beds]
 
-    mmd, any_ov, ov50 = [], [], []
+    mmd, any_ov, ov50, ov99 = [], [], [], []
     for _, r in sh.iterrows():
         start, end = int(r["start"]), int(r["end"])
         llen = end - start
@@ -132,7 +132,9 @@ def _annotation_overlap(sh, args):
         mmd.append(float(r["mmd_score"]))
         any_ov.append(best_bp > 0)
         ov50.append(best_bp / llen >= 0.5)
-    return np.asarray(mmd), np.asarray(any_ov, dtype=bool), np.asarray(ov50, dtype=bool)
+        ov99.append(best_bp / llen >= 0.99)   # near-complete boundary recovery
+    return (np.asarray(mmd), np.asarray(any_ov, dtype=bool),
+            np.asarray(ov50, dtype=bool), np.asarray(ov99, dtype=bool))
 
 
 def main():
@@ -157,8 +159,8 @@ def main():
     print(f"#   n={len(seqid)}  Pearson r={pr:.3f}  Spearman rho={sp:.3f}")
 
     print(f"# annotation overlap for all {len(sh)} loci ...")
-    mmd_b, any_ov, ov50 = _annotation_overlap(sh, args)
-    print(f"#   any-overlap {100*any_ov.mean():.1f}%   >=50% {100*ov50.mean():.1f}%")
+    mmd_b, any_ov, ov50, ov99 = _annotation_overlap(sh, args)
+    print(f"#   any-overlap {100*any_ov.mean():.1f}%   >=50% {100*ov50.mean():.1f}%   >=99% {100*ov99.mean():.1f}%")
     lo = mmd_b < 0.1
     if lo.any():
         print(f"#   any-overlap at MMD<0.1: {100*any_ov[lo].mean():.1f}%")
@@ -171,15 +173,17 @@ def main():
     DATA.mkdir(parents=True, exist_ok=True)
     np.savez(DATA / "fig4_mmd.npz",
              A_seqid=seqid, A_mmd=mmd_a,
-             B_mmd=mmd_b, B_any=any_ov, B_over50=ov50,
+             B_mmd=mmd_b, B_any=any_ov, B_over50=ov50, B_over99=ov99,
              C_mmd=C_mmd, C_biotype=C_biotype)
     (DATA / "fig4_mmd.json").write_text(json.dumps({
         "pair": args.results.name,
+        "n_short": int(len(sh)),
         "seqid_pearson_r": round(pr, 3),
         "seqid_spearman_rho": round(sp, 3),
         "seqid_n": int(len(seqid)),
         "overlap_any_frac": round(float(any_ov.mean()), 3),
         "overlap_50_frac": round(float(ov50.mean()), 3),
+        "overlap_99_frac": round(float(ov99.mean()), 3),
     }, indent=2))
     print(f"wrote {DATA/'fig4_mmd.npz'}")
 

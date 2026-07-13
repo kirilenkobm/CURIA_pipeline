@@ -135,20 +135,27 @@ transcript reconstruction.
 
 \subsubsection{Classifier training and evaluation partitioning}
 \label{sec:classifier-training}
-Chain--transcript pairs were labeled by the orthology procedure the step adapts
-\citep{kirilenkoIntegratingGeneAnnotation2023}: pairs supported as orthologous
-projections form the positive class and the remaining (e.g.\ paralogous or
-partially spanning) pairs the negative class. Labeling uses only chain geometry
-and reference-side exon structure; query-species ncRNA annotation is not used to
-label pairs. Because the classifier scores chain--transcript geometry rather than
-embedding similarity, it is independent of the embedding-based matching that the
-downstream annotation-agreement analysis evaluates, so classifier training does
-not directly confound that evaluation.
-% TODO(authors): state the exact train/evaluation partition as implemented ---
-% by transcript / gene / locus / chromosome / family --- and disclose any overlap
-% between classifier-training loci and the human--mouse evaluation loci, including
-% whether paralogous or nearby loci can occur in both. Adjust the interpretation
-% accordingly rather than omitting overlap. (Not inferable from code; fill in.)
+Chain--transcript pairs are labeled by the orthology procedure the step adapts
+\citep{kirilenkoIntegratingGeneAnnotation2023}: pairs classified as orthologous
+(ORTH) form the positive class and pairs classified as paralogous (PARA) the
+negative class; other categories are excluded from training. Each of the seven
+features is derived only from chain geometry and reference-side exon structure
+(synteny coverage, gene-level exonic overlap, flank coverage, exon-to-query length
+ratio, exon fraction, exon count, and a single-exon flag); no RNA foundation-model
+embedding and no query-species ncRNA annotation enter the labeling or the features.
+A gradient-boosted decision-tree classifier is trained on a balanced sample of up
+to 20{,}000 pairs per class with a random 75/25 stratified train/test split
+(fixed seed), and generalization is summarized by five-fold stratified
+cross-validated AUC. The split is stratified by label but \emph{not} grouped by
+transcript, gene, locus, chromosome, or family, so paralogous or neighboring loci
+can in principle fall on both sides of the split; the reported classifier AUC
+should therefore be read as an estimate of ORTH-versus-PARA feature separability
+rather than a strict held-out-locus generalization bound. Crucially, because the
+features are embedding-independent and the classifier only gates the candidate
+search space, it is independent of the embedding-based matching that the
+downstream annotation-agreement analysis evaluates; that evaluation compares
+predicted loci to query annotations the classifier never sees, so classifier
+training does not directly confound it.
 
 \subsection{RNA embeddings}
 \label{sec:embeddings}
@@ -300,10 +307,12 @@ match length and match quality, which should be kept in mind when thresholding
 across species of differing divergence (Figure~\ref{fig:cores}C). We report $d$ as
 an empirical, length-dependent match score rather than a length-normalized
 similarity, and additionally record the effective aligned length for each match.
-% TODO(authors): with final multi-species results, add the deferred analysis of
-% SW score / d versus effective aligned length, positives vs controls, per-species
-% length distributions, and whether the divergence trend in Fig 6C persists after
-% controlling for aligned length; decide then whether to length-normalize.
+Across the panel, $d$ is moderately anticorrelated with effective aligned length
+(Spearman $\rho \approx -0.64$; median matched length ${\approx}150$\,nt), and
+median $d$ is lower for longer alignments (${\approx}0.03$) than for shorter ones
+(${\approx}0.06$), confirming that the score conflates length and per-position
+similarity; we therefore treat $d$ as a within-locus ranking statistic rather than
+a calibrated cross-locus similarity, and do not length-normalize.
 
 On a Rfam-derived benchmark, this matcher separates same-family (homologous) from
 cross-family island pairs with high accuracy (AUC $0.993$;

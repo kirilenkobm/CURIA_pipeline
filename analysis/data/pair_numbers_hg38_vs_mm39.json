@@ -1,74 +1,74 @@
 {
   "short": {
-    "n": 2700,
-    "mmd_median": 0.143,
-    "frac_mmd_lt_0.05": 0.345,
+    "n": 2994,
+    "mmd_median": 0.142,
+    "frac_mmd_lt_0.05": 0.325,
     "biotype_median_mmd": {
-      "snoRNA": 0.0,
       "tRNA": 0.0,
+      "snoRNA": 0.024,
+      "ribozyme": 0.045,
       "scaRNA": 0.074,
-      "lncRNA": 0.113,
-      "miRNA": 0.135,
+      "lncRNA": 0.118,
+      "miRNA": 0.136,
       "vault_RNA": 0.137,
-      "ribozyme": 0.138,
+      "misc_RNA": 0.199,
       "sRNA": 0.231,
       "rRNA": 0.271,
-      "misc_RNA": 0.281,
       "rRNA_pseudogene": 0.365,
-      "snRNA": 0.392
+      "snRNA": 0.394
     }
   },
   "islands": {
-    "n_matches": 10811,
-    "n_ref_genes_matched": 7702,
+    "n_matches": 12172,
+    "n_ref_genes_matched": 8802,
     "matches_per_gene_median": 1.0,
     "dist_median": 0.048,
-    "frac_dist_lt_0.05": 0.534
+    "frac_dist_lt_0.05": 0.521
   },
   "seqid_vs_mmd": {
-    "n": 2700,
-    "pearson_r": -0.81,
-    "spearman_rho": -0.855,
+    "n": 1500,
+    "pearson_r": -0.795,
+    "spearman_rho": -0.85,
     "identity_bins": [
       {
         "bin": "30-40%",
-        "n": 49,
-        "mmd_median": 0.448,
-        "mmd_iqr": 0.192
+        "n": 23,
+        "mmd_median": 0.424,
+        "mmd_iqr": 0.133
       },
       {
         "bin": "40-50%",
-        "n": 843,
-        "mmd_median": 0.375,
-        "mmd_iqr": 0.209
+        "n": 499,
+        "mmd_median": 0.355,
+        "mmd_iqr": 0.22
       },
       {
         "bin": "50-60%",
-        "n": 503,
-        "mmd_median": 0.208,
-        "mmd_iqr": 0.155
+        "n": 281,
+        "mmd_median": 0.195,
+        "mmd_iqr": 0.14
       },
       {
         "bin": "60-70%",
-        "n": 256,
-        "mmd_median": 0.134,
-        "mmd_iqr": 0.113
+        "n": 140,
+        "mmd_median": 0.119,
+        "mmd_iqr": 0.102
       },
       {
         "bin": "70-80%",
-        "n": 243,
-        "mmd_median": 0.042,
-        "mmd_iqr": 0.119
+        "n": 144,
+        "mmd_median": 0.043,
+        "mmd_iqr": 0.097
       },
       {
         "bin": "80-90%",
-        "n": 510,
+        "n": 272,
         "mmd_median": 0.0,
         "mmd_iqr": 0.0
       },
       {
         "bin": "90-100%",
-        "n": 293,
+        "n": 140,
         "mmd_median": 0.0,
         "mmd_iqr": 0.0
       }
