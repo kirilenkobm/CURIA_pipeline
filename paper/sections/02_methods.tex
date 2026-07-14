@@ -363,6 +363,26 @@ analyses test cross-locus specificity, sensitivity to local nucleotide
 composition, and within-locus positional specificity; they do not establish
 biological function.
 
+In a separate sequence-baseline analysis, we tested whether embedding similarity
+was fully reducible to conventional nucleotide similarity by evaluating the short
+and island branches separately
+against the same panel of sequence-derived metrics: normalized Levenshtein
+identity, normalized affine-gap nucleotide Smith--Waterman score, aligned-region
+identity, 3-mer and 4-mer cosine similarity, dinucleotide-composition distance,
+length ratio, and GC-content difference. For 2{,}994 human--mouse short-ncRNA
+predictions, we compared gene-grouped, five-fold cross-validated logistic models
+for any-exon annotation support, using either the sequence metrics alone or the
+same metrics plus MMD. For island matching, 200 CURIA-assigned partners were
+sampled separately from the human--mouse and human--cow comparisons and contrasted
+with cross-locus alternatives; models were evaluated with reference-island-grouped
+cross-validation and cluster-bootstrap confidence intervals. A prespecified
+low-sequence-similarity subset comprised the lowest quartile of normalized
+nucleotide Smith--Waterman among assigned pairs. Within each syntenic locus, we
+also compared the rank of the CURIA-assigned partner with same-length tiled
+alternatives. All island AUC calculations used freshly recomputed embedding-SW
+scores for both assigned and alternative pairs; the stored match table is
+threshold-selected at $d \leq 0.1$ and therefore has a restricted score range.
+
 \begin{figure}[t]
   \centering
   % Panel A: scripted schematic. Panel B: real SNHG12 core (human hg38 x mouse
@@ -412,7 +432,7 @@ producing a refined prediction. This is a processing-yield denominator, not a
 biological recall estimate. A recall denominator would require a linked set of
 eligible human loci with established mouse orthologs; query-side interval overlap
 alone does not establish that relationship.
-As a conservative proxy, we also define a emph{named-counterpart} set: eligible
+As a conservative proxy, we also define a \emph{named-counterpart} set: eligible
 human loci whose gene name occurs exactly, ignoring case, in the mouse GENCODE
 annotation. Recovery requires a final prediction to overlap an exon of that
 same-name mouse gene. This criterion favors established, consistently named RNA

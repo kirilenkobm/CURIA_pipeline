@@ -36,9 +36,9 @@ Both rely on primary-sequence or motif-level signals to define homology. In
 contrast, \curia{} does not require strong end-to-end sequence conservation
 within the ncRNA itself. It combines whole-genome-alignment-derived syntenic
 constraints with embedding-based similarity, so
-correspondence can be proposed for loci whose primary sequence has diverged beyond
-the reach of alignment- or motif-based comparison, without requiring curated
-families or explicit structural alignment.
+correspondence can be proposed for loci where conventional sequence- and
+motif-level similarity provides limited or incomplete evidence, without requiring
+curated families or explicit structural alignment.
 
 \subsection{Biological implications}
 Beyond the modular correspondence pattern noted above, two observations bear on
@@ -118,9 +118,13 @@ supervision
 Prior work has shown that such models encode representations associated with RNA
 secondary structure and related functional properties, and can support downstream
 structure prediction tasks \citep{shenAccurateRNA3D2024}. In this context,
-embedding similarity provides an implicit measure of correspondence that is not
-tied directly to primary-sequence identity. Empirically, match scores form a
-continuous scale separating high-confidence matches from background signal. This
+embedding similarity was strongly sequence-associated rather than independent of
+sequence, but was not fully reducible to the tested sequence-derived metrics. In
+the tested human--mouse and human--cow island samples, it adds ranking information
+beyond nucleotide identity, local sequence alignment, k-mer similarity,
+composition, and length; the analysis does not establish that this additional
+information represents conserved RNA structure or function. Empirically, match
+scores form a continuous scale separating high-confidence matches from background signal. This
 interpretation is broadly consistent with observations from protein language
 models, where representations learned from sequence alone organize according to
 structural and functional properties \citep{rivesBiologicalStructureFunction2021}.

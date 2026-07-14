@@ -1,0 +1,22 @@
+analysis	model	n	n_features	roc_auc	roc_sd	pr_auc	pr_sd	d_roc_auc	d_roc_ci	d_pr_auc	d_pr_ci	fold_d_roc	wilcoxon_p	roc_ci	n_sup	n_uns	median_sup	median_uns	median_diff	diff_ci	cliffs_delta	cohens_d	mannwhitney_p	n_pairs	median_mmd_supported	median_mmd_unsupported	median_paired_diff	mean_paired_diff	match_ident_gap_median	seq_explains_mmd_r2	resid_median_supported	resid_median_unsupported
+A2	baseline_seq	2994.0	7.0	0.8868	0.0123	0.9166	0.0095																									
+A2	seq+mmd	2994.0	8.0	0.8934	0.0128	0.9211	0.0099																									
+A2	baseline_seq+biotype	2994.0	19.0	0.893	0.0111	0.9209	0.0087																									
+A2	seq+biotype+mmd	2994.0	20.0	0.8984	0.0116	0.9252	0.0092																									
+A2_delta	seq -> seq+mmd	2994.0						0.0064	[0.0030,0.0097]	0.0044	[0.0026,0.0061]	0.0066	0.0																			
+A2_delta	seq+biotype -> +mmd	2994.0						0.005	[0.0023,0.0076]	0.0037	[0.0016,0.0056]	0.0054	0.0																			
+A2_single	ident_levenshtein_alone	2994.0		0.8735										[0.8610,0.8861]																		
+A2_single	sw_norm_alone	2994.0		0.8838										[0.8713,0.8965]																		
+A2_single	mmd_alone	2994.0		0.8746										[0.8620,0.8873]																		
+A2	baseline_seq_no_miRNA	1738.0	7.0	0.9186	0.014	0.9338	0.0121																									
+A2	seq+mmd_no_miRNA	1738.0	8.0	0.9179	0.0143	0.9337	0.0121																									
+A3_bin	ident_30-40	52.0													7.0	45.0																
+A3_bin	ident_40-45	436.0													81.0	355.0	0.3458	0.3964	-0.0505	[-0.1194, -0.0207]	-0.25	-0.456	0.0004364159875886719									
+A3_bin	ident_45-50	512.0													93.0	419.0	0.2733	0.3598	-0.0865	[-0.1316, -0.0345]	-0.308	-0.555	3.4415728943453382e-06									
+A3_bin	ident_50-55	347.0													102.0	245.0	0.1814	0.2521	-0.0707	[-0.1084, -0.0353]	-0.357	-0.654	1.6396990979283297e-07									
+A3_bin	ident_55-60	241.0													83.0	158.0	0.1583	0.1823	-0.024	[-0.0547, 0.0049]	-0.145	-0.232	0.06343218334882854									
+A3_bin	ident_60-70	302.0													160.0	142.0	0.1086	0.1438	-0.0352	[-0.0579, -0.007]	-0.212	-0.429	0.0014272399334624905									
+A3_matched	NN_matched												9.783996110900453e-17								-0.193			574.0	0.1612	0.2079	-0.0388	-0.0481	0.0137			
+A4	residual_mmd																				-0.1	-0.248	1.9836578805505272e-06							0.6849	-0.0006	0.006
+A2	baseline_seq_no_nearident	2953.0	7.0	0.8838	0.0098	0.9124	0.007																									
+A2	seq+mmd_no_nearident	2953.0	8.0	0.8902	0.0099	0.917	0.007																									

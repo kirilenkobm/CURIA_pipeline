@@ -1,0 +1,4 @@
+fig5_label	human_gene	ref_gene_id	biotype	ref_transcript_id	ref_chrom	ref_start	ref_end	ref_strand	query_chrom	query_start	query_end	query_strand	chain_id	ref_len_spliced	query_len	ident_levenshtein	sw_norm	sw_aligned_ident	mmd	overlap_any	overlap_bp	query_overlap_genes
+RNU6-7.1	RNU6-7	ENSG00000201654.1	snRNA	U_ENSG00000201654.1	chr14	32202044	32202151	+	chr12	52650566	52650673	+	1	107	107	0.9252	0.9626	1.0	0.0	True	103	Gm24859(103bp)
+SNORD57.7	SNORD57	ENSG00000226572.1	snoRNA	U_ENSG00000226572.1	chr20	2656938	2657010	+	chr2	130119932	130120004	+	7	72	72	0.7361	0.6667	0.7971	0.0	True	72	Nop56(72bp); Snord57(69bp)
+VTRNA(vaultRNA).57	VTRNA(vaultRNA)	ENSG00000199990.1	vault_RNA	U_ENSG00000199990.1	chr5	140711274	140711373	+	chr18	36934960	36935061	+	57	99	101	0.5941	0.3485	0.6316	0.1366	True	101	Vaultrc5(101bp)
