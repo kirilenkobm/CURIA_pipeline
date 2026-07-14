@@ -11,11 +11,15 @@ framing, several key observations emerge.
 We show that cross-species ncRNA correspondence can be recovered at genome scale
 using a combination of syntenic constraints and embedding-based similarity. This
 enables identification of candidate corresponding loci even in the absence of
-strong sequence conservation. For short ncRNAs, correspondence is typically well
-localized when supported by annotation, and embedding-based similarity provides a
-consistent empirical measure of match confidence. For long ncRNAs, correspondence
-is frequently partial and localized, with signal concentrated in discrete
-subregions rather than spanning full transcripts. Together, these results support
+strong sequence conservation. For compact short ncRNAs, MMD provides a useful
+empirical refinement and ranking score, but in this benchmark it added little
+predictive information beyond the tested sequence metrics, and the increment
+disappeared after miRNAs were excluded. The more distinctive result arose in the
+island branch: localized embedding-SW added ranking information beyond nucleotide
+alignment, identity, k-mer similarity, composition, and length in the tested
+human--mouse and human--cow samples. Island-branch correspondence is frequently
+partial and localized, with signal concentrated in discrete subregions rather
+than spanning full transcripts. Together, these results support
 a model in which cross-species ncRNA correspondence is heterogeneous and modular,
 and can be captured using localized comparison in embedding space.
 
@@ -42,9 +46,9 @@ curated families or explicit structural alignment.
 
 \subsection{Biological implications}
 Beyond the modular correspondence pattern noted above, two observations bear on
-interpretation. For long ncRNAs, correspondence frequently concentrates in compact
-subregions while the surrounding transcript context shows weak or no detectable
-similarity. And for short ncRNAs, although embedding-based similarity is strongly
+interpretation. For island-branch loci, correspondence frequently concentrates in compact
+subregions within broader transcript contexts in which \curia{} detects substantially
+less localized embedding-supported correspondence. For short ncRNAs, although embedding-based similarity is strongly
 associated with sequence identity, the relationship is not uniform: at intermediate
 sequence identity ($\approx 40$--$60\%$), substantial variability is observed,
 indicating that loci with comparable sequence similarity can exhibit markedly
@@ -52,14 +56,23 @@ different embedding-based similarity.
 
 The island-based representation provides a practical way to capture this behavior:
 recurrent embedding-supported islands define candidate corresponding regions, while
-intervening regions appear less constrained. Correspondence patterns also vary
+intervening regions show less detected localized correspondence. Correspondence patterns also vary
 across RNA classes: compact RNAs such as tRNAs and snoRNAs show strong and
-consistent signal, whereas long ncRNAs more often exhibit partial or fragmented
+consistent signal, whereas lncRNA loci more often exhibit partial or fragmented
 correspondence
 \citep{hezroniPrinciplesLongNoncoding2015,ulitskyEvolutionRescueUsing2016,mattickLongNoncodingRNAs2023}.
 Together, these observations support a model in which recurrent candidate elements
-are embedded within broader, weakly constrained transcript contexts, emphasizing
+are embedded within broader transcript contexts showing substantially less localized
+embedding-supported correspondence, emphasizing
 the importance of localized comparison in cross-species ncRNA analysis.
+
+Given the heterogeneity of lncRNA evolution and annotation, a single universal
+orthology criterion may be premature. A more tractable near-term objective is to
+stratify candidate correspondence by the strength and type of comparative
+evidence. Recurrently matched candidate cores provide one such evidence layer,
+defining subsets that can be prioritized for subsequent functional and
+evolutionary investigation without treating recurrence alone as proof of
+orthology or function.
 
 \subsection{Limitations}
 This study has several limitations related to data availability, modeling
@@ -69,6 +82,15 @@ are incomplete and heterogeneous across species, and transcript boundaries---par
 for lncRNAs---are often ambiguous. As a result, evaluation based on
 annotation overlap provides only an approximate and conservative estimate of
 performance.
+
+The recurrent-core screen also separates coverage from match quality. At the
+pipeline acceptance ceiling ($d\leq0.10$), the 17-of-19 set contains 1{,}693
+lncRNA loci, whereas requiring the same distance cutoff in every counted species
+reduces this to 170 loci at $d\leq0.02$ and 21 at $d\leq0.01$. These stricter
+subsets provide useful high-confidence candidates, but the distance is a
+length-dependent ranking statistic rather than a calibrated probability, so the
+cutoffs should be interpreted as sensitivity analyses rather than definitive
+biological quality classes.
 
 Second, \curia{} depends on the availability and quality of genome alignment
 chains. Because the search space is restricted to aligned regions, correspondence
@@ -81,8 +103,8 @@ patterns.
 Third, the method relies on embedding representations derived from RNA foundation
 models. Although RiNALMo \citep{penicRiNALMoGeneralpurposeRNA2025} provides a
 practical representation, it may not capture all relevant structural features.
-The island detector was trained on known compact structured ncRNAs against genomic
-background. A genuine lncRNA core whose embedding pattern lies outside that
+The island detector was trained on annotated compact ncRNAs enriched for structured
+RNA classes against genomic background. A genuine lncRNA core whose embedding pattern lies outside that
 positive class may therefore be classified as background and never reach the
 matcher. Repository held-out-family analyses show broad generalization across
 structured-RNA families but substantially weaker recall for lncRNA, consistent
@@ -102,6 +124,12 @@ false-positive match---which cannot be resolved from interval overlap alone. We
 therefore report annotation agreement rather than treating it as either precision
 or recall.
 
+Recurrent island matches may also include repeat-derived RNA segments, conserved
+DNA elements, or other sequence features that are not specific to RNA structure
+or function. Systematic stratification using RepeatMasker annotations is therefore
+a useful future extension, although this possible confounding does not by itself
+invalidate the observed matches.
+
 Finally, \curia{} does not explicitly distinguish between shared evolutionary
 origin and convergent similarity at the level of embedding space. While synteny
 strongly biases predictions toward corresponding loci with shared ancestry,
@@ -119,8 +147,11 @@ Prior work has shown that such models encode representations associated with RNA
 secondary structure and related functional properties, and can support downstream
 structure prediction tasks \citep{shenAccurateRNA3D2024}. In this context,
 embedding similarity was strongly sequence-associated rather than independent of
-sequence, but was not fully reducible to the tested sequence-derived metrics. In
-the tested human--mouse and human--cow island samples, it adds ranking information
+sequence. For compact short ncRNAs, MMD was largely redundant with the tested
+sequence metrics: its incremental predictive value was small overall and absent
+after excluding miRNAs. In the tested human--mouse and human--cow island samples,
+however, embedding-SW was not fully reducible to the tested sequence-derived
+metrics and added ranking information
 beyond nucleotide identity, local sequence alignment, k-mer similarity,
 composition, and length; the analysis does not establish that this additional
 information represents conserved RNA structure or function. Empirically, match
@@ -128,6 +159,18 @@ scores form a continuous scale separating high-confidence matches from backgroun
 interpretation is broadly consistent with observations from protein language
 models, where representations learned from sequence alone organize according to
 structural and functional properties \citep{rivesBiologicalStructureFunction2021}.
+
+Taken together, the sequence-baseline, recurrence, and folding analyses delimit
+what the embedding signal supports. In the tested island samples,
+synteny-constrained embedding similarity adds ranking information beyond the
+tested nucleotide metrics. The broad recurrent set is intentionally inclusive,
+whereas stricter per-species quorums define nested high-confidence subsets; no
+single embedding-SW distance cutoff is presented as biologically optimal.
+ViennaRNA agreement was heterogeneous, with moderate boundary-stable agreement
+for one MALAT1 core but weak or unstable agreement for the others. \curia{} should
+therefore be interpreted as a correspondence framework using synteny and learned
+RNA representations, not as a direct predictor of structural conservation or
+function.
 
 \subsection{Future directions}
 The most informative next step is biological interpretation of the recovered
@@ -141,3 +184,14 @@ Methodologically, combining core matches across species in a phylogenetic model
 could distinguish conserved ancestry from recurrent similarity and reduce the
 impact of a single poor assembly or chain set. Multi-scale representations may
 also connect locally detectable cores to longer-range RNA architecture.
+
+Smith--Waterman alignment over the token-level cosine-similarity matrix was
+selected as a natural proof-of-concept objective because it localizes ordered
+embedding similarity while allowing gaps, but it is not assumed to be optimal,
+particularly because its accumulated score depends on both alignment length and
+per-position similarity. Possible future algorithmic extensions include
+length-normalized or explicitly length-regularized local alignment, soft-DTW or
+related order-aware differentiable objectives, optimal-transport-based matching,
+and local substring matching that minimizes MMD or another distribution distance
+subject to a minimum-length constraint or a regularization term preventing
+degenerate selection of very short substrings.

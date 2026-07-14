@@ -16,25 +16,26 @@ analysis/
   make_conserved_cores.py  # writes paper/lncRNAs_with_conserved_cores.tsv
 ```
 
-## Supplementary conserved-cores table
+## Recurrent-core table package
 
-The list of lncRNAs carrying conserved cores across the panel is large (~10^3
-rows), so the paper only **links** to the repo copy rather than inlining it.
-Regenerate it from a run with:
+The recurrent-core export contains gene-level, core-level, and core-by-assembly
+TSV tables plus distance/quorum sensitivity tables. Regenerate the package with:
 
 ```bash
-make cores PYTHON=../.venv/bin/python           # from paper/ -> paper/lncRNAs_with_conserved_cores.tsv
+make recurrent-tables PYTHON=../.venv/bin/python  # from paper/
 # or directly, from repo root:
 .venv/bin/python analysis/make_conserved_cores.py --results-dir preprint_results \
-    --out paper/lncRNAs_with_conserved_cores.tsv
+    --out-dir paper/recurrent_core_tables \
+    --legacy-out paper/lncRNAs_with_conserved_cores.tsv
 ```
 
 It reuses Figure 6's core definition (`make_figures._load_islands` /
-`_cluster_cores`) and classifies each gene by proximity to protein-coding loci
-(intergenic / near-coding ±5 kb / antisense / sense-overlapping). Criteria are
-CLI-tunable (`--min-species`, `--min-len`, `--max-dist`); the default requires a
-core in `N_species − 1` species. The "~700 intergenic" figure in the text is the
-intergenic subset once the full 10-species panel is rerun.
+`_cluster_cores`) and classifies each gene by proximity to protein-coding loci.
+The default export uses the completed 19-assembly panel, a quorum of at least 17
+assemblies, and a mean reference-island length of at least 120 bp. Strict
+per-species distance counts are reported in the sensitivity tables and do not
+require a new embedding run. See `paper/recurrent_core_tables/README.md` for
+field definitions and provenance.
 
 ## Build
 

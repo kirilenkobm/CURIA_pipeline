@@ -11,7 +11,7 @@ MAIN    := main
 PYTHON  := python
 ANALYSIS:= ../analysis
 
-.PHONY: all pdf assets figures cores watch clean distclean
+.PHONY: all pdf assets figures cores recurrent-tables watch clean distclean
 
 pdf: $(MAIN).pdf
 
@@ -28,7 +28,10 @@ figures:
 # Supplementary conserved-cores TSV (large; linked from the paper, not inlined).
 # Writes lncRNAs_with_conserved_cores.tsv (in paper/) from the run panel.
 cores:
-	$(PYTHON) $(ANALYSIS)/make_conserved_cores.py --results-dir ../preprint_results --out lncRNAs_with_conserved_cores.tsv
+	$(PYTHON) $(ANALYSIS)/make_conserved_cores.py --results-dir ../preprint_results --out-dir recurrent_core_tables --legacy-out lncRNAs_with_conserved_cores.tsv
+
+recurrent-tables:
+	$(PYTHON) $(ANALYSIS)/make_conserved_cores.py --results-dir ../preprint_results --out-dir recurrent_core_tables --legacy-out lncRNAs_with_conserved_cores.tsv
 
 watch:
 	latexmk -pdf -pvc -interaction=nonstopmode $(MAIN).tex

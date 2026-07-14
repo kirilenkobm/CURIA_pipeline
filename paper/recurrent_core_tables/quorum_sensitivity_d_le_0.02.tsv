@@ -1,0 +1,5 @@
+per_species_cutoff	required_species	cores	lncRNA_loci	intergenic_loci
+0.02	17	173	170	42
+0.02	15	485	464	116
+0.02	12	1157	1039	277
+0.02	9	2022	1759	490

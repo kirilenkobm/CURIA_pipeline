@@ -1,0 +1,7 @@
+per_species_cutoff	required_species	cores	lncRNA_loci	percent_of_broad_loci	intergenic_loci	interpretation
+0.1	17	1813	1693	100.0	379	broad accepted set
+0.05	17	837	784	46.3	187	intermediate set
+0.04	17	632	594	35.1	144	intermediate-stringency set
+0.03	17	404	379	22.4	103	stringent set
+0.02	17	173	170	10.0	42	highly stringent set
+0.01	17	21	21	1.2	6	ultra-stringent set

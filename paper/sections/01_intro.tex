@@ -39,8 +39,8 @@ context-dependent \citep{chenInterpretableRNAFoundation2022}, making direct
 comparison sensitive to boundary definition.
 
 This ambiguity is especially acute for lncRNAs. Their annotated loci can span
-tens of kilobases, often with localized functional or structurally constrained
-domains separated by weakly constrained sequence. Whole-locus comparison can
+tens of kilobases, often with localized candidate domains separated by long
+intervening sequence. Whole-locus comparison can
 therefore dilute the detectable signal, and the locus may exceed the sequence
 length supported by current RNA foundation models. This motivates searching for
 localized candidate cores rather than requiring end-to-end transcript
@@ -79,12 +79,12 @@ way to localize relevant embedding-supported signal
 The distinguishing objective here is annotation transfer with localized
 RNA-specific evidence: first identify the relevant syntenic locus, then find and
 compare subregions with embedding patterns characteristic of annotated compact
-structured ncRNAs.
+ncRNAs enriched for structured RNA classes.
 
 \subsection{Synteny-constrained embedding matching}
-An approach that appears to be missing is the use of pretrained RNA-language-model
-representations as the similarity signal within syntenically constrained genomic
-search regions. Genome alignment chains already identify regions that share
+An underexplored component is the use of pretrained RNA-language-model
+representations as a localized similarity signal within syntenically constrained
+genomic search regions. Genome alignment chains already identify regions that share
 genomic context and therefore indicate where a corresponding ncRNA should be sought
 \citep{zoonomiaconsortiumComparativeGenomicsMultitool2020,armstrongProgressiveCactusMultiplegenome2020}.
 At the same time, RNA foundation models such as RNA-FM
@@ -141,12 +141,12 @@ context that is partly independent of conservation within the ncRNA itself
 \citep{kirilenkoIntegratingGeneAnnotation2023,sharmaIncreasedAlignmentSensitivity2017}.
 
 Within these candidate regions, \curia{} evaluates similarity in embedding space
-rather than relying on primary-sequence alignment. The pipeline treats short and
-long ncRNAs with complementary similarity measures. For short ncRNAs, each region
+rather than relying on primary-sequence alignment. The pipeline treats the short
+and island branches with complementary similarity measures. For short ncRNAs, each region
 is represented as a set of per-position embedding vectors and similarity is
 quantified using Maximum Mean Discrepancy (MMD)
 \citep{grettonKernelTwoSampleTest2012}, a distribution-level measure over
-embeddings; low MMD indicates similar embedding distributions. For long ncRNAs,
+embeddings; low MMD indicates similar embedding distributions. In the island branch,
 localized detector-positive subregions are matched by token-level local alignment using
 Smith--Waterman alignment \citep{smithIdentificationCommonMolecular1981} over the
 per-token cosine similarity dotplot. Both formulations avoid explicit
@@ -161,7 +161,7 @@ In this work, we:
         matching in embedding space.
   \item Introduce \curia{}, a pipeline combining chain-based locus projection with
         embedding-based detection and comparison of localized signal.
-  \item Introduce an island-based representation for long ncRNAs that separates
+  \item Introduce an island-based representation for geometry-defined island-branch loci that separates
         detectable candidate cores from intervening sequence not required to align.
   \item Develop a boundary refinement strategy for short ncRNAs.
   \item Demonstrate a genome-scale proof of concept across multiple mammalian

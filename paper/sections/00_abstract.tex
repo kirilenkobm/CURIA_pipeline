@@ -8,15 +8,21 @@ representations derived from the RiNALMo RNA foundation model. \curia{} formulat
 cross-species ncRNA correspondence as synteny-constrained matching in embedding
 space. It first identifies candidate loci using a simplified TOGA-based
 projection, then detects localized regions whose embedding patterns resemble
-those of annotated compact structured ncRNAs (``islands'') within long
-transcripts, and finally establishes cross-species correspondence by
+those of annotated compact ncRNAs enriched for structured RNA classes
+(``islands''), and finally establishes cross-species correspondence by
 local alignment in embedding space. We applied \curia{} to 19 human-to-query
 genome pairs. In the detailed human-to-mouse annotation comparison,
 52.4\% of predicted short-ncRNA loci overlapped an annotated exon (any overlap).
-From 34{,}846 annotated human lncRNA loci, a stringent multi-species funnel
-identified 1{,}693 annotated human lncRNA loci with a recurrent
+For compact short ncRNAs, embedding similarity was largely redundant with the
+tested conventional sequence metrics, whereas localized embedding-SW matching of
+island regions provided additional ranking information beyond nucleotide
+alignment, identity, k-mer similarity, composition, and length in the tested
+human--mouse and human--cow samples.
+From 34{,}846 annotated human lncRNA loci, a multi-species screen identified a
+broad recurrent set of 1{,}693 annotated human lncRNA loci with an
 embedding-supported region in at least
-17 of 19 query genomes. These
+17 of 19 query genomes; 170 loci remained when every counted species was
+additionally required to satisfy $d\leq0.02$. These
 results suggest that combining synteny with embedding-based similarity can
 complement conventional sequence conservation for cross-species ncRNA annotation
 in settings characterized by weak or heterogeneous primary-sequence conservation,

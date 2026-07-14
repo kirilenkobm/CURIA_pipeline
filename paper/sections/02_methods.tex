@@ -16,13 +16,13 @@ correspondence that combines chain-guided locus prediction with embedding-based
 comparison (Figure~\ref{fig:pipeline}). Given a reference genome with ncRNA
 annotations and one or more query genomes linked by genome alignment chains,
 \curia{} produces: (i) predicted corresponding loci and (ii) an embedding-based
-similarity score for short ncRNAs; for long ncRNAs it instead reports (iii)
+similarity score for short ncRNAs; for island-branch loci it instead reports (iii)
 matched localized subregions
 (``islands'').
 
 The pipeline follows a branching architecture after an initial projection step,
-handling short and long ncRNAs separately. Short ncRNAs yield a single refined
-locus, whereas long ncRNAs yield a set of island-level alignments. The pipeline
+handling short and island-branch loci separately. Short ncRNAs yield a single refined
+locus, whereas island-branch loci yield a set of island-level alignments. The pipeline
 consists of seven stages:
 \begin{enumerate}
   \item \textbf{Preprocessing.} Isoforms of the same gene/locus and strand are
@@ -31,14 +31,14 @@ consists of seven stages:
   \item \textbf{Candidate region prediction.} Genome alignment chains are used to
         identify candidate query regions via a simplified TOGA-inspired classifier
         (Section~\ref{sec:candidate}).
-  \item \textbf{Reference island detection (long branch).} Localized subregions (``islands'')
+  \item \textbf{Reference island detection (island branch).} Localized subregions (``islands'')
         are detected within transcripts (Section~\ref{sec:refisland}).
-  \item \textbf{Chain-guided island projection (long branch).} Reference islands are projected to the
+  \item \textbf{Chain-guided island projection (island branch).} Reference islands are projected to the
         query genome to define targeted search regions
         (Section~\ref{sec:projisland}).
-  \item \textbf{Query island detection (long branch).} Candidate islands are identified in
+  \item \textbf{Query island detection (island branch).} Candidate islands are identified in
         projected regions (Section~\ref{sec:queryisland}).
-  \item \textbf{Island alignment (long branch).} Reference and query islands are matched by
+  \item \textbf{Island alignment (island branch).} Reference and query islands are matched by
         embedding-based alignment (Section~\ref{sec:islandalign}).
   \item \textbf{Short ncRNA refinement (short branch).} Whole candidate loci are
         refined by embedding-based local boundary search
@@ -74,7 +74,7 @@ signal, and no biological claim is attached to the merged model itself.
   \caption{Overview of the \curia{} pipeline for cross-species ncRNA
   correspondence analysis. \textbf{(A)} Genome alignment chains restrict the
   search space by defining candidate loci between reference and query genomes.
-  \textbf{(B)} For long ncRNAs, localized subregions (``islands'') are detected
+  \textbf{(B)} For island-branch loci, localized subregions (``islands'') are detected
   and matched across species using embedding-based similarity, enabling
   localization of candidate corresponding regions within transcripts. \textbf{(C)}
   For short ncRNAs, correspondence is resolved via local boundary refinement using
@@ -219,14 +219,13 @@ intermediate absolute values (e.g.\ $0.05$ vs $0.1$) are not guaranteed to be on
 single globally calibrated scale across loci or biotypes. Cross-locus comparisons
 and global thresholds are therefore interpreted as approximate rather than exact.
 
-\subsection{Reference lncRNA island detection}
+\subsection{Reference island detection}
 \label{sec:refisland}
-To detect localized embedding patterns resembling annotated compact structured
-ncRNAs, we trained a logistic regression classifier on
+To detect localized embedding patterns resembling annotated compact ncRNAs
+enriched for structured RNA classes, we trained a logistic regression classifier on
 fixed-length sequence windows represented in RiNALMo embedding space. Positive
-examples consisted of windows from structured ncRNAs (miRNAs, snoRNAs, snRNAs,
-scaRNAs, and misc\_RNAs; lncRNAs were excluded to keep the detector focused on
-compact structured signal), labeled positive when a window covered $\geq 20$\,nt
+examples consisted of windows from annotated miRNAs, snoRNAs, snRNAs, scaRNAs,
+and misc\_RNAs (lncRNAs were excluded), labeled positive when a window covered $\geq 20$\,nt
 of an annotated element; negative examples consisted of intergenic, non-exonic
 genomic windows. Windows were embedded with RiNALMo, mean-pooled across positions,
 and projected from 1280 to 64 dimensions using the finding PCA prior to training.
@@ -238,7 +237,7 @@ background false-positive budget of $\leq 20\%$, it detected $\approx 78\%$ of
 signal windows ($\geq 40$\,nt overlap).
 
 The resulting model distinguishes embedding patterns associated with the
-annotated compact structured ncRNAs in its positive set from genomic background.
+annotated compact ncRNAs in its positive set from genomic background.
 We call contiguous detector-positive regions ``islands.'' This is an operational
 embedding-based definition, not evidence that every island forms a stable
 structure or has a biological function, and the model is not a general ncRNA
@@ -302,8 +301,9 @@ reference position $i$ and query position $j$.
 Nucleotide-indexed local alignment paths are extracted by a Smith--Waterman
 procedure \citep{smithIdentificationCommonMolecular1981} on the score matrix
 $S = C - \tau$, with cosine offset $\tau = 0.5$ and a linear gap penalty of $0.3$.
-From the Smith--Waterman score $s$ (which integrates cosine similarity over the
-aligned band length) we define a match distance $d = 1/(1 + s)$; lower $d$
+From the embedding Smith--Waterman alignment score $s$ (which integrates cosine
+similarity over the aligned band length) we define the embedding-SW distance
+$d = 1/(1 + s)$; lower $d$
 indicates a stronger match. Candidate matches are filtered by minimum island
 length ($\geq 72$\,nt), minimum effective aligned length ($\geq 40$\,nt), and
 match distance ($d \leq 0.1$). Within each projected locus, matches are then
@@ -338,8 +338,8 @@ a calibrated cross-locus similarity, and do not length-normalize.
 In the Rfam-derived matcher benchmark
 (\texttt{notebooks/matching\_benchmark.ipynb}), positives were pairs sharing a
 curated Rfam seed-family core embedded in unrelated genomic flanks, whereas
-negatives contained different-family cores. The cosine-dotplot Smith--Waterman
-score separated these planted match and non-match pairs with AUC $0.993$ and
+negatives contained different-family cores. The embedding-SW alignment score
+separated these planted match and non-match pairs with AUC $0.993$ and
 localized the planted core in all 140 positive pairs. This is a matcher sanity
 check under controlled flanks, not an estimate of genome-wide annotation accuracy.
 
@@ -367,7 +367,7 @@ In a separate sequence-baseline analysis, we tested whether embedding similarity
 was fully reducible to conventional nucleotide similarity by evaluating the short
 and island branches separately
 against the same panel of sequence-derived metrics: normalized Levenshtein
-identity, normalized affine-gap nucleotide Smith--Waterman score, aligned-region
+identity, normalized affine-gap nucleotide-SW score, aligned-region
 identity, 3-mer and 4-mer cosine similarity, dinucleotide-composition distance,
 length ratio, and GC-content difference. For 2{,}994 human--mouse short-ncRNA
 predictions, we compared gene-grouped, five-fold cross-validated logistic models
@@ -377,7 +377,7 @@ sampled separately from the human--mouse and human--cow comparisons and contrast
 with cross-locus alternatives; models were evaluated with reference-island-grouped
 cross-validation and cluster-bootstrap confidence intervals. A prespecified
 low-sequence-similarity subset comprised the lowest quartile of normalized
-nucleotide Smith--Waterman among assigned pairs. Within each syntenic locus, we
+nucleotide-SW among assigned pairs. Within each syntenic locus, we
 also compared the rank of the CURIA-assigned partner with same-length tiled
 alternatives. All island AUC calculations used freshly recomputed embedding-SW
 scores for both assigned and alternative pairs; the stored match table is
@@ -397,9 +397,9 @@ threshold-selected at $d \leq 0.1$ and therefore has a restricted score range.
   matching for a recurrent lncRNA region (SNHG12, human hg38 chr1 $\times$ mouse
   mm39 chr4). Each island is embedded once; the per-token cosine dotplot is aligned
   by Smith--Waterman, shown here as the accumulated-score matrix. The conserved
-  matched region forms a single coherent diagonal ridge (SW score $69$), whereas the same
+  matched region forms a single coherent diagonal ridge (embedding-SW alignment score $69$), whereas the same
   human island against an unrelated mouse island yields no coherent alignment
-  (SW score $11$).}
+  (embedding-SW alignment score $11$).}
   \label{fig:islands}
 \end{figure}
 
@@ -445,7 +445,7 @@ any annotated exon of an ncRNA gene. We report the fraction of loci overlapping
 annotated exons and the distribution of overlap proportions across predictions.
 
 \subsubsection{Island-level evaluation}
-For long ncRNAs, evaluation is extended to localized subregions (``islands''). A
+For island-branch loci, evaluation is extended to localized subregions (``islands''). A
 matched island is considered supported if it overlaps any annotated ncRNA exon in
 the query genome. We report the fraction of matched islands overlapping annotated
 regions, the number of matched islands per locus, and cross-species consistency of
@@ -472,14 +472,37 @@ performance is a conservative proxy rather than a precise boundary benchmark.
 \subsection{Recurrent-core aggregation and coding proximity}
 Reference islands from different species runs are assigned to the same core when
 their human reference intervals overlap within the same gene; the best-distance
-match per core and query species is retained. The near-panel screen requires a
-lncRNA core in at least 17 of 19 query genomes, mean reference length at least
-120\,bp, and mean cosine-SW distance at most 0.1. Human lncRNA gene spans are then
+match per core and query species is retained. A species contributes to a core when
+it contains an accepted island match; accepted rows already satisfy the pipeline
+threshold of embedding-SW distance $d\leq0.10$. The broad recurrent set requires
+an accepted match in at least 17 of 19 query species and mean reference-island
+length of at least 120\,bp. Because every retained per-species row is individually
+bounded by $d\leq0.10$, applying the same cutoff to the cross-species mean adds
+little further discrimination. In the strict-quorum sensitivity analysis, we
+instead counted species whose individual best match satisfied $d\leq0.05$, $0.04$,
+$0.03$, $0.02$, or $0.01$ while fixing the recurrence requirement at 17 species;
+we also varied the species quorum at $d\leq0.02$. Human lncRNA gene spans are then
 compared with protein-coding gene spans. Direct overlaps are classified by strand
 as sense, antisense, or both; non-overlapping loci within 5\,kb are classified as
 near coding; all remaining loci are classified as intergenic. This is a
 coding-proximity description of annotated human lncRNA loci, not a test of
 transcription or function.
+
+\subsection{Exploratory ViennaRNA structure comparison}
+The exact human--mouse intervals for the three short-ncRNA examples in
+Figure~\ref{fig:cases} and the accepted MALAT1 recurrent-core matches R5, R4, R3,
+and R2 were analyzed with ViennaRNA 2.7.2
+\citep{lorenzViennaRNAPackage2011}. The similar-length short-ncRNA intervals were
+folded whole. For each MALAT1 core, length-matched windows were defined
+from the aligned span and expanded symmetrically by 20 or 40\,nt. Global
+partition-function folding and RNAplfold were applied, and the human and mouse
+sequences were aligned by affine-gap nucleotide Smith--Waterman. Both base-pair
+probability matrices were mapped into the shared alignment coordinates and
+compared using column-exact weighted Jaccard and a $\pm2$-column tolerance-aware
+weighted overlap with one-to-one matching. These structural-overlap metrics are
+exploratory descriptive measures, not validated structure-similarity scores. Full
+per-window and per-method results are provided in Supplementary Figures S1--S7,
+Supplementary Table S1, and the source TSVs.
 
 \subsection{Implementation details}
 \label{sec:impl}

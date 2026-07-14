@@ -1,0 +1,8 @@
+group	label	human_gene	ref_len	query_len	seq_identity_table	sw_norm_table	sw_aligned_ident_table	curia_aligned_len	mmd_or_diagmmd	embedding_sw	ref_mfe	query_mfe	ref_ens_div	query_ens_div	aln_cols	aln_pct_id	n_shared_exact	weighted_jaccard	weighted_overlap	n_shared_tol2	wov_tol2	n_shared_tol3	wov_tol3
+fig5_short	SNORD57.7	SNORD57	72	72	0.7361	0.6667	0.7971	72	0.0	n/a (short-ncRNA analysis)	-8.9	-10.3	21.73	16.59	69	79.7	8	0.096	0.18	22	0.442	24	0.492
+fig5_short	RNU6-7.1	RNU6-7	107	107	0.9252	0.9626	1.0	107	0.0	n/a (short-ncRNA analysis)	-27.2	-25.8	9.31	7.98	103	100.0	34	0.937	0.997	34	1.0	34	1.0
+fig5_short	VTRNA(vaultRNA).57	VTRNA(vaultRNA)	99	101	0.5941	0.3485	0.6316	99	0.1366	n/a (short-ncRNA analysis)	-35.2	-30.0	9.53	10.81	83	72.3	0	0.0	0.0	0	0.0	3	0.108
+malat1_core (core window)	MALAT1.R5	MALAT1	325	285	0.6201	0.6059	0.7323	273	0.0125	79.0	-99.4	-87.1	77.09	87.71	285	83.5	41	0.187	0.332	44	0.373	49	0.394
+malat1_core (core window)	MALAT1.R4	MALAT1	164	160	0.3616	0.7351	0.8571	168	0.0173	56.803	-33.7	-35.0	33.16	44.04	156	93.6	0	0.016	0.032	0	0.0	6	0.035
+malat1_core (core window)	MALAT1.R3	MALAT1	177	163	0.4022	0.3839	0.6339	179	0.0458	20.834	-42.7	-36.0	28.75	41.39	157	73.9	8	0.053	0.108	11	0.153	12	0.158
+malat1_core (core window)	MALAT1.R2	MALAT1	242	243	0.2921	0.3448	0.6008	143	0.0329	29.395	-60.5	-68.4	76.53	61.39	227	68.3	7	0.012	0.024	11	0.038	14	0.062

@@ -1,0 +1,8 @@
+group	label	human_gene	ref_gene_id	ref_chrom	ref_start	ref_end	ref_strand	query_chrom	query_start	query_end	query_strand	chain_or_island	selection_reason
+fig5_short	SNORD57.7	SNORD57	ENSG00000226572.1	chr20	2656938	2657010	+	chr2	130119932	130120004	+	chain7	Figure-5 short-ncRNA case study (exact Fig.5 interval); moderate identity snoRNA
+fig5_short	RNU6-7.1	RNU6-7	ENSG00000201654.1	chr14	32202044	32202151	+	chr12	52650566	52650673	+	chain1	Figure-5 short-ncRNA case study (exact Fig.5 interval); high-identity snRNA
+fig5_short	VTRNA(vaultRNA).57	VTRNA(vaultRNA)	ENSG00000199990.1	chr5	140711274	140711373	+	chr18	36934960	36935061	+	chain57	Figure-5 short-ncRNA case study (exact Fig.5 interval); low-identity vault RNA
+malat1_core	MALAT1.R5	MALAT1	ENSG00000251562.13	chr11	65505924	65506332	+	chr19	5845844	5846132	-	island_R5_Q0	strong core (lowest diag_mmd=0.0125) nearest MALAT1 3' structured region (highest hg38 coord on + strand)
+malat1_core	MALAT1.R4	MALAT1	ENSG00000251562.13	chr11	65504284	65504452	+	chr19	5847470	5847918	-	island_R4_Q3	strong embedding core (diag_mmd=0.0173) with highest nucleotide identity (sw_aligned_ident=0.857)
+malat1_core	MALAT1.R3	MALAT1	ENSG00000251562.13	chr11	65503364	65503732	+	chr19	5848510	5848678	-	island_R3_Q4	moderate core (diag_mmd=0.0458)
+malat1_core	MALAT1.R2	MALAT1	ENSG00000251562.13	chr11	65501924	65502172	+	chr19	5849710	5850518	-	island_R2_Q6	lower-sequence-similarity core (sw_aligned_ident=0.601, ident_levenshtein=0.292 lowest of the four)
