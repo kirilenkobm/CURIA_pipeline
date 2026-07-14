@@ -69,7 +69,6 @@ input_data/supply/rnacentral/*
 # BED files (except example/reference files in docs or examples directories)
 *.bed
 *.bed12
-!preprint_results/**/*.bed
 !examples/**/*.bed
 !examples/**/*.bed12
 !input_data/reference_annotation/test_sample.bed
@@ -165,6 +164,8 @@ rinalmo_version_outputs/*
 # temporary disable
 preprint_results/
 preprint_results__*
+!preprint_results/README.md
+!preprint_results/download.sh
 
 # Old RNA-FM preprint materials (kept on disk, out of git)
 preprint__deprecated/
