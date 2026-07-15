@@ -1,25 +1,40 @@
 \section{Data and code availability}
 \label{sec:availability}
 
-The \curia{} pipeline is available at the project repository:
-\url{https://github.com/kirilenkobm/CURIA_pipeline}. Preprocessed reference
-annotation files used in this study will be archived on Zenodo; the repository
-directory \texttt{input\_data/reference\_annotation/} will contain a script for
-downloading them. The recurrent-core tables described
-in Section~\ref{sec:results} are included in the repository under
-\texttt{paper/recurrent\_core\_tables/}. This directory contains gene-level,
-core-level, and core-by-assembly match tables, distance and quorum sensitivity
-tables, and a README defining coordinates, identifiers, acceptance criteria, and
-derived fields. The exploratory ViennaRNA supplement is provided as
-\texttt{paper/supplementary/vienna\_structure\_supplementary.pdf}, containing
-Supplementary Figures S1--S7 and Supplementary Table S1. Its machine-readable
-per-window results, source data, and diagnostic plots are provided under
+The \curia{} pipeline, analysis code, and documentation are available at
+\url{https://github.com/kirilenkobm/CURIA_pipeline}. The complete per-species
+output snapshot used for this study is archived on Zenodo
+\citep{curiaZenodo2026} under DOI
+\href{https://doi.org/10.5281/zenodo.21383175}
+{\texttt{10.5281/zenodo.21383175}}. The archive contains the full
+\texttt{hg38\_vs\_*} result directories for all 19 query assemblies, including
+candidate-region classifications, reference and query island coordinates,
+accepted localized matches, compact-ncRNA predictions, union-transcript
+mappings, and run metadata. The repository directory
+\texttt{preprint\_results/} contains a README and a download script that retrieve
+this exact archived snapshot and verify its SHA-256 checksum.
+
+The recurrent-core tables described in Section~\ref{sec:results} are included in
+the repository under \texttt{paper/recurrent\_core\_tables/}. This directory
+contains gene-level, core-level, and core-by-assembly match tables, distance and
+quorum sensitivity tables, and a README defining coordinates, identifiers,
+acceptance criteria, and derived fields.
+
+The complete supplementary material is provided as
+\texttt{paper/supplementary/supplementary.pdf}. It contains Supplementary
+Figures S1--S9 and Supplementary Table S1, including the exploratory
+ViennaRNA-based comparisons and representative locus-level browser views for
+MALAT1 and XIST. Machine-readable per-window results, source data, and diagnostic
+plots for the ViennaRNA analysis are provided under
 \path{analysis/vienna_structure_examples/}, including
-\texttt{malat1\_windows.tsv}. Genome assemblies (2bit
-format) were obtained from NCBI \citep{sayersDatabaseResourcesNational2022},
-the UCSC Genome Browser \citep{kentHumanGenomeBrowser2002}, and DNA Zoo
-Consortium resources \citep{dudchenkoDeNovoAssembly2017}. Genome alignment
-chains were obtained from the TOGA project (Hiller lab)
+\texttt{malat1\_windows.tsv}.
+
+Genome assemblies in 2bit format were obtained from NCBI
+\citep{sayersDatabaseResourcesNational2022}, the UCSC Genome Browser
+\citep{kentHumanGenomeBrowser2002}, and DNA Zoo Consortium resources
+\citep{dudchenkoDeNovoAssembly2017}. Genome-alignment chains were obtained from
+the TOGA project (Hiller lab)
 \citep{kirilenkoIntegratingGeneAnnotation2023}:
 \url{https://genome.senckenberg.de/download/TOGA}. All external datasets are
-publicly available, and links to the exact sources are provided in the repository.
+publicly available, and links to the exact sources are provided in the
+repository.

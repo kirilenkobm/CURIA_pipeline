@@ -2,18 +2,23 @@
 
 **Cross-species Unified ncRNA Inference and Annotation**
 
-CURIA is a research prototype for cross-species ncRNA annotation using genome alignment chains, orthology-guided locus projection, and RNA foundation model embeddings.
+CURIA is a research prototype for cross-species ncRNA correspondence analysis
+using genome alignment chains, chain-based candidate-locus classification, and
+RNA foundation-model embeddings.
 
 It supports:
-- short ncRNA refinement by local matching in embedding space
-- long ncRNA analysis via localized structured subregions (“islands”)
-- genome-scale analysis by restricting search to syntenic candidate loci
+- compact ncRNA matching using embedding-distance comparison
+- long ncRNA analysis through localized embedding-positive subregions (“islands”)
+- genome-scale analysis by restricting searches to chain-supported candidate loci
 
 For methodological details, validation, and limitations, see the accompanying preprint.
 
 ## Status
 
-Research prototype. Preprint in preparation.
+Research prototype. A preprint is in preparation. The exact per-species result
+snapshot used for the manuscript is archived on Zenodo:
+
+https://doi.org/10.5281/zenodo.21383175
 
 ## Installation
 
@@ -43,15 +48,6 @@ source .venv/bin/activate
 
 CURIA defaults to **RiNALMo** (1280-dim, 650M params). RNA-FM is retained behind
 `--model rnafm` for comparison only and is **deprecated**.
-
-Why RiNALMo is the default:
-- **Context stability.** RiNALMo embeddings are essentially invariant to flanking
-  sequence (≈0 MMD drift), whereas RNA-FM embeddings shift substantially when input
-  boundaries move. This is the root cause of RNA-FM's expensive per-window re-embedding.
-- **Embed once, align at nucleotide resolution.** Because RiNALMo is context-stable, island
-  alignment embeds each island **once** and matches them by Smith-Waterman on the per-token
-  cosine dotplot — no per-window re-embedding. Dramatically faster and more accurate on true
-  matches (see `notebooks/matching_benchmark.ipynb`).
 
 Per-model parameters (PCA files, signal/noise classifier, scan/match thresholds,
 embedding strategy) live in [`modules/model_registry.py`](modules/model_registry.py) and
@@ -115,9 +111,9 @@ python modules/GPU_executor/benchmark_batch_size.py
 - CPU required for RNA TOGA and sequence processing
 - GPU optional but recommended for foundation-model embeddings
 - Tested on macOS (MPS) and Linux (CUDA)
-- Attention uses PyTorch's built-in `scaled_dot_product_attention` (memory-efficient / flash
-  kernels on CUDA, O(L) memory) — **no `flash-attn` package or extra CUDA build is required.**
-  A quick preflight embeds a test sequence and checks it's finite before the run; skip with `--skip-preflight`.
+- Attention uses PyTorch's built-in `scaled_dot_product_attention`, allowing
+  memory-efficient or Flash Attention backends when supported by the installed
+  PyTorch/CUDA configuration. No separate `flash-attn` package is required.
 
 ---
 
@@ -125,17 +121,17 @@ python modules/GPU_executor/benchmark_batch_size.py
 
 ```bash
 ./curia.py \
-  --ref-bed12 $REFERENCE_BED12 \
-  --reference-metadata $REFERENCE_METADATA \
-  --chain $ALIGNMENT_CHAINS \
-  --ref-2bit $REF_2BIT \
-  --query-2bit $QUERY_2BIT \
-  --output-dir $OUTPUT_DIR \
-  --cpu-max-workers 128 \               # max concurrent async workers (default: 128)
-  --gpu-max-batch 160 \                 # max GPU batch size (default: 160, tune with benchmark script)
-  --gpu-min-batch 32 \                  # min batch size before timeout (default: 32)
-  --ref-islands-db hg38_ref_islands.db \# optional: reuse reference-island scans across species (see below)
-  --no-cleanup                          # optional: keep all intermediate files (SQLite DBs, joblists)
+  --ref-bed12 "$REFERENCE_BED12" \
+  --reference-metadata "$REFERENCE_METADATA" \
+  --chain "$ALIGNMENT_CHAINS" \
+  --ref-2bit "$REF_2BIT" \
+  --query-2bit "$QUERY_2BIT" \
+  --output-dir "$OUTPUT_DIR" \
+  --cpu-max-workers 128 \
+  --gpu-max-batch 160 \
+  --gpu-min-batch 32 \
+  --ref-islands-db hg38_ref_islands.db \
+  --no-cleanup
 ```
 
 **Performance tuning:**
@@ -156,10 +152,11 @@ transparently recomputes. If you run several pipelines **concurrently**, give ea
 lane its own DB (`--ref-islands-db lane1.db`, `lane2.db`, …) — one cache per lane.
 
 **Search-space mode (`--projection-mode`):**
-Default `orthologous` uses only chains the ncRNA-orthology classifier accepts.
-`--projection-mode best-chain` additionally keeps the top-scoring chain for
-non-ORTH (PARA/SPAN) transcripts — more sensitive for deeply diverged queries
-(e.g. marsupials) where the classifier over-filters; ORTH loci are unchanged.
+Default `orthologous` uses chain--transcript pairs classified as ORTH by the
+chain-based candidate classifier. `--projection-mode best-chain` additionally
+retains the top-scoring chain for transcripts without an accepted ORTH candidate,
+providing a more permissive search-space option for deeply diverged query
+genomes. Existing ORTH candidates are retained unchanged.
 
 ---
 
@@ -170,7 +167,7 @@ By default, CURIA automatically cleans up and organizes outputs into a user-frie
 ```
 output_dir/
 ├── query_annotation/
-│   ├── short_ncRNA.bed              # Short ncRNA annotations (≤160bp)
+│   ├── short_ncRNA.bed              # Accepted compact-locus predictions (≤256 nt)
 │   ├── short_ncRNA_details.tsv      # Detailed short ncRNA results
 │   ├── aligned_query_islands.bed     # Aligned lncRNA islands in query
 │   ├── aligned_reference_islands.bed # Matching reference islands
@@ -185,7 +182,7 @@ output_dir/
 │   ├── union_to_query.json          # Transcript → query regions mapping
 │   └── query_regions_clusters.json  # Merged query regions
 └── toga_results/
-    ├── rna_orthologous_regions.tsv          # RNA orthology predictions
+    ├── rna_orthologous_regions.tsv          # Chain-supported candidate-region table
     ├── toga_orthologous_regions.tsv         # Original TOGA output
     └── original_toga_classification_table.tsv # TOGA classification scores
 ```
@@ -199,21 +196,27 @@ See [OUTPUT_STRUCTURE.md](OUTPUT_STRUCTURE.md) for detailed file descriptions.
 
 ## Validation
 
-Evaluated on several mammalian genome pairs, including human–mouse.
+CURIA was evaluated across 19 human-to-query mammalian genome comparisons, with
+detailed sequence-baseline and annotation-supported analyses for human--mouse
+and human--cow. The deposited result snapshot is available on Zenodo:
+https://doi.org/10.5281/zenodo.21383175
 
-For full evaluation details and limitations, see the preprint.
+For the full evaluation design, numerical results, and limitations, see the
+accompanying manuscript.
 
 ---
 
 ## Citation
 
-If you use CURIA, please cite:
+A preprint describing CURIA is in preparation. Until it is available, please cite
+the archived result dataset:
 
-Bogdan M. Kirilenko (2026).
+> Kirilenko, Bogdan M. (2026). *CURIA cross-species ncRNA correspondence
+> predictions across 19 mammalian genomes* (Version 1.0) [Data set]. Zenodo.
+> https://doi.org/10.5281/zenodo.21383175
 
-Cross-species ncRNA annotation using synteny-constrained embedding similarity.
-
-bioRxiv (preprint).
+The manuscript citation and BibTeX entry will be added here after the preprint is
+published.
 
 ---
 

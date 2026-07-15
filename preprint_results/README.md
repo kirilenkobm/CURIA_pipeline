@@ -5,9 +5,9 @@ This directory contains the per-species outputs used for the CURIA preprint.
 The full `hg38_vs_*` result directories are not stored in Git because of their size. 
 The exact snapshot used for the preprint is archived on Zenodo.
 
-- Zenodo record: `https://zenodo.org/records/RECORD_ID`
-- DOI: `https://doi.org/10.5281/zenodo.DOI_ID`
-- Dataset version: `VERSION`
+- Zenodo record: `https://zenodo.org/records/21383175`
+- DOI: `https://doi.org/10.5281/zenodo.21383175`
+- Dataset version: `1.0`
 
 To download and extract the results into this directory, run:
 
