@@ -345,6 +345,8 @@ reference intervals.
 
 \subsection{Case studies}
 
+\subsubsection{Compact ncRNA projections}
+
 To illustrate the behavior of \curia{}, we examined three representative compact
 ncRNA loci (Fig.~\ref{fig:cases}). Projection of human SNORD57 to mouse identified
 a match localized over the annotated \textit{Snord57} locus, illustrating recovery
@@ -376,6 +378,37 @@ further using exploratory ViennaRNA-based structure comparisons.
     nucleotide-SW score 0.35, and MMD 0.14.}
   \label{fig:cases}
 \end{figure}
+
+\subsubsection{Localized correspondence in long ncRNA loci}
+
+Inspection of representative long ncRNA loci revealed distinct patterns of
+localized cross-species correspondence. MALAT1 showed the clearest recurrent
+pattern: the same terminal reference cores produced strong accepted matches in
+mouse, rat, cat, cow, armadillo, and opossum, including genomes in which no native
+MALAT1 annotation was available. XIST showed a different but similarly localized
+pattern, with several recurrent cores clustering near the transcript 5' region
+in mouse, rat, cat, cow, and armadillo, while internal matches were less
+consistently recovered. NEAT1 exhibited a more heterogeneous modular pattern,
+with several recurrent terminal and internal cores interspersed among regions
+that were inconsistently matched across species. NORAD was dominated by a single
+broadly recurrent core across most of the species panel. By contrast, FIRRE
+illustrated a projection-limited case in which extensive locus divergence and
+fragmented chain coverage restricted downstream matching.
+
+TERC was strongly recovered in rat, cat, cow, and armadillo. In mouse, \curia{}
+selected a candidate locus overlapping the annotated locus \textit{Gm55883},
+where a robust human--TERC match was recovered. A second chain projected the
+human locus directly onto the annotated mouse \textit{Terc} gene, but covered
+essentially only the gene itself, without appreciable flanking or broader
+locus-level support, and was therefore rejected by the chain-based candidate
+classifier. The discrepancy between the selected syntenic locus and the current
+mouse \textit{Terc} annotation was not resolved here.
+
+These locus-level observations are qualitative examples of the different
+correspondence patterns recovered by \curia{} and do not by themselves establish
+conserved molecular function or evolutionary orthology.
+Representative stacked genome-browser views for MALAT1 and XIST are provided in
+Supplementary Figs.~S8 and S9, respectively.
 
 \subsection{Exploratory comparison with predicted secondary structure}
 
@@ -446,6 +479,5 @@ approximately three hours on a single NVIDIA RTX PRO 4500 GPU under the benchmar
 configuration used here. Embedding inference was performed on GPU using batched
 execution, whereas MMD computation, local matching, assignment, and filtering
 were performed on CPU.
-
 Intermediate reference-side results were persisted and reused across
 query-genome runs.
