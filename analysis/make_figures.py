@@ -278,22 +278,29 @@ def _fig3a_schematic(ax):
             fontweight="bold", ha="right", va="center")
     ax.text(63, 94, r"reference genomic position $\rightarrow$", fontsize=8, ha="center")
 
-    # Detector score: gaussians whose peaks define the islands
+    # Detector score: gaussians whose peaks define the islands. The reference
+    # detector scans concatenated exonic sequence, not introns, so leave the
+    # score trace blank across the intronic gaps in the schematic as well.
     thr, base = 56.0, 46.0
     peaks = [(35, 21, 2.6), (50, 18, 2.3), (83, 22, 3.1)]
     xg = np.linspace(28, 96, 600)
     yg = base + sum(h * np.exp(-0.5 * ((xg - c) / w) ** 2) for c, h, w in peaks)
     # a little wiggle so it reads as a real trace
     yg = yg + 1.1 * np.sin(xg * 1.3)
-    ax.plot([28, 96], [thr, thr], color="0.7", lw=0.9, zorder=1)
+    exon_mask = np.zeros_like(xg, dtype=bool)
+    for x0, width in [(30, 24), (58, 10), (74, 22)]:
+        exon_mask |= (xg >= x0) & (xg <= x0 + width)
+    yg_plot = np.where(exon_mask, yg, np.nan)
+    for x0, width in [(30, 24), (58, 10), (74, 22)]:
+        ax.plot([x0, x0 + width], [thr, thr], color="0.7", lw=0.9, zorder=1)
     ax.text(96.5, thr, "threshold", fontsize=8, ha="left", va="center")
     ax.text(29.5, 68, "0.5", fontsize=7, ha="right", va="center", color="0.5")
-    ax.plot(xg, yg, color=orange, lw=1.4, zorder=3)
+    ax.plot(xg, yg_plot, color=orange, lw=1.4, zorder=3)
     ax.text(LBL, 58, "embedding-based\ndetector score", fontsize=8,
             fontweight="bold", ha="right", va="center")
 
     # supra-threshold spans -> islands (aligned with the peaks by construction)
-    above = yg > thr
+    above = exon_mask & (yg > thr)
     spans, i = [], 0
     while i < len(xg):
         if above[i]:

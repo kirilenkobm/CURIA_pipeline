@@ -289,6 +289,9 @@ scored by the classifier. The resulting probability trace is smoothed with a
 five-window moving average, and contiguous regions exceeding a fixed probability
 threshold of 0.5 are defined as candidate islands.
 
+The detection, projection, and embedding-based matching procedure is illustrated
+in Figure~\ref{fig:islands}.
+
 Island coordinates are subsequently mapped back to genomic space. An island
 that crosses a splice junction may therefore consist of multiple genomic
 segments. Single-exon loci of length $257$--$320$\,nt are not scanned but are
@@ -418,8 +421,8 @@ core. Numerical benchmark results are reported in the Results section.
 
 \subsubsection{Cross-locus and within-locus null analyses}
 
-Matched islands from the human--cow (\texttt{hg38--bosTau9}) and human--mouse
-(\texttt{hg38--mm39}) comparisons were evaluated using two complementary null
+Matched islands from the human--cow (\texttt{hg38-bosTau9}) and human--mouse
+(\texttt{hg38-mm39}) comparisons were evaluated using two complementary null
 analyses.
 
 First, 250 matched island pairs were sampled at evenly spaced ranks from each
