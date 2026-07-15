@@ -2,53 +2,58 @@
 \label{sec:results}
 
 \subsection{Benchmark setup}
-\curia{} was evaluated on 19 human-to-query genome pairs, using human (hg38) as
-the reference, spanning primates through the marsupial
-outgroups: rhesus macaque (rheMac10), mouse (mm39), rat (rn7), rabbit (HLoryCun3),
-cow (bosTau9), pig (susScr11), Bryde's whale (HLbalEde1), dromedary (HLcamDro2),
-horse (equCab3), cat (felCat9), dog (canFam5), pangolin (HLmanJav2), flying fox
-(HLpteVam2), hedgehog (eriEur2), armadillo (dasNov3), Asian elephant (HLeleMax1),
-and three marsupials: gray short-tailed opossum (monDom5), Virginia opossum
-(HLdidVir1), and
-tammar wallaby (HLnotEug3). Genome assemblies
-were obtained from NCBI \citep{sayersDatabaseResourcesNational2022} and the UCSC
-Genome Browser \citep{kentHumanGenomeBrowser2002}. Due to variability in
-annotation quality across species, high-quality ncRNA annotations were used only
+
+\curia{} was evaluated on 19 human--query genome pairs, using human
+(\texttt{hg38}) as the reference and spanning evolutionary distances from
+primates to marsupials: rhesus macaque (\texttt{rheMac10}), mouse
+(\texttt{mm39}), rat (\texttt{rn7}), rabbit (\texttt{HLoryCun3}), cow
+(\texttt{bosTau9}), pig (\texttt{susScr11}), Bryde's whale
+(\texttt{HLbalEde1}), dromedary (\texttt{HLcamDro2}), horse
+(\texttt{equCab3}), cat (\texttt{felCat9}), dog (\texttt{canFam5}), pangolin
+(\texttt{HLmanJav2}), flying fox (\texttt{HLpteVam2}), hedgehog
+(\texttt{eriEur2}), armadillo (\texttt{dasNov3}), Asian elephant
+(\texttt{HLeleMax1}), gray short-tailed opossum (\texttt{monDom5}), Virginia
+opossum (\texttt{HLdidVir1}), and tammar wallaby (\texttt{HLnotEug3}).
+
+Genome assemblies were obtained from NCBI
+\citep{sayersDatabaseResourcesNational2022}, the UCSC Genome Browser
+\citep{kentHumanGenomeBrowser2002}, and DNA Zoo Consortium resources
+\citep{dudchenkoDeNovoAssembly2017}. High-quality ncRNA annotations were used
 for human (GENCODE V48) and mouse (GENCODE VM37)
-\citep{harrowGENCODEReferenceHuman2012}, while other species were analyzed without
-relying on their native annotations. Human annotation contains thousands of
-lncRNA loci, but biological evidence and mechanistic characterization are
-concentrated in a much smaller subset; the remainder comprises a mixture of
-functional transcripts, transcription-associated products, and uncertain
-annotations \citep{statelloGeneRegulationLong2021,mattickLongNoncodingRNAs2023}.
-Evaluation was performed at both the locus level (for
-short ncRNAs and lncRNA loci) and the substructure level (for island matches),
-following the criteria defined in Section~\ref{sec:eval}.
+\citep{harrowGENCODEReferenceHuman2012}. The remaining query genomes were
+analyzed without relying on their native ncRNA annotations.
+
+Evaluation followed the criteria defined in Section~\ref{sec:eval} and was
+performed at the locus level for compact ncRNA predictions and at the localized
+subregion level for island matches.
 
 \subsection{Overall performance}
-We first quantified short-branch processing yield and agreement between predicted
-loci and existing annotations. Of 9{,}247 annotated non-protein-coding human union
-loci satisfying the single-exon, $\leq256$-nt short-branch geometry, 2{,}949 were
-assigned at least one chain-projected mouse candidate locus and 2{,}948 produced a
-refined prediction. Multiple retained chains produced 2{,}994 prediction rows,
-which form the denominator for the following query-annotation agreement analysis;
-these counts measure workflow coverage, not recall against known orthologs. Among
-the 2{,}994 predictions,
-52.4\% show any overlap with an annotated exon ($\geq 1$\,nt; any-overlap rate),
-46.5\% have $\geq 50\%$ of the predicted-locus length covered by an annotated
-exon, and 26.0\% have $\geq 99\%$ prediction coverage. These are one-directional
-prediction-coverage criteria, not reciprocal overlap. Among any-overlap predictions, the median overlap
-is 98.9\% (mean 86.8\%), indicating that refined predicted loci are typically well
-localized and consistent with annotated boundaries.
 
-Under the conservative exact-name criterion, 446 geometry-eligible human loci had
-an annotated mouse gene with the same name; \curia{} predictions overlapped an
-exon of that same-name mouse gene for 373 loci (83.6\% rough named-counterpart
-recall). Because this subset is enriched for established, consistently named RNA
-families, it should not be interpreted as recall over all short ncRNAs.
+We first quantified processing yield for compact single-exon loci and agreement
+between refined query predictions and existing mouse annotations. Of 9{,}247
+annotated non-protein-coding human union loci satisfying the single-exon,
+$\leq256$-nt routing criterion, 2{,}949 were assigned at least one
+chain-projected candidate region in the mouse genome, and 2{,}948 produced a
+refined prediction.
 
-Refined predicted loci are generally well localized when annotation support is
-present.
+Because some reference loci were associated with multiple retained chains, these
+loci yielded 2{,}994 prediction rows. These rows form the denominator for the
+following annotation-overlap analysis; the preceding counts describe workflow
+coverage rather than recall against established orthologs. Among the 2{,}994
+predictions, 52.4\% overlapped an annotated exon by at least 1\,nt, 46.5\% had at
+least 50\% of their length covered by an annotated exon, and 26.0\% had at least
+99\% prediction coverage. These are one-directional prediction-coverage
+criteria rather than reciprocal-overlap measures. Among predictions with any
+annotated-exon overlap, the median covered fraction was 98.9\% and the mean was
+86.8\%, indicating that annotation-supported predictions were generally well
+localized.
+
+Under the conservative exact-name criterion, 446 geometry-eligible human loci
+had an annotated mouse gene with the same name. Predictions for 373 of these loci
+overlapped an exon of the corresponding same-named mouse gene, yielding an
+83.6\% named-counterpart recovery rate. Because this subset is enriched for
+established and consistently named RNA families, it should not be interpreted as
+genome-wide recall for short ncRNAs.
 
 \subsection{Short ncRNA performance and score behavior}
 % RiNALMo human-mouse numbers (analysis/pair_numbers.py + compute_fig4_data.py).
@@ -79,9 +84,10 @@ values (Fig.~\ref{fig:mmd}B), supporting the interpretation of MMD as a continuo
 empirical association with annotation support in this benchmark, rather than a
 globally calibrated confidence scale.
 
-A subset of predictions with very low reported MMD does not overlap existing
-annotations. Zero is the minimum reported score but can result from clipping a
-negative unbiased estimate.
+A subset of predictions with reported MMD values of zero did not overlap existing
+annotations. Because negative finite-sample estimates are clipped to zero, a
+reported zero should be interpreted as a very low estimated discrepancy rather
+than as evidence of identical embedding distributions.
 
 Embedding similarity was strongly associated with nucleotide similarity but was
 not fully reducible to the tested sequence-derived metrics. Across all 2{,}994
@@ -106,160 +112,221 @@ short-ncRNA classes in this benchmark.
 \end{figure}
 
 \subsection{Localized embedding-supported regions (``islands'')}
-% Island match metric is embedding-SW distance d = 1/(1 + score), not MMD.
-We analyzed localized subregions (``islands'') within lncRNAs to assess
-cross-species correspondence beyond the locus level. Islands are matched at
-token level by Smith--Waterman local alignment over the per-token cosine
-similarity dotplot, and match quality is reported as an embedding-SW distance
-$d = 1 / (1 + \mathrm{score})$ (lower is better; Section~\ref{sec:islandalign}). Island
-detection reveals that detector-positive embedding patterns are sparse and localized.
-Across the 19 comparisons, 34{,}532 of 34{,}846 annotated human lncRNA union loci
-entered reference-island processing in at least one comparison, and 18{,}364
-(53.2\%) had at least one reference island. Among island-positive loci, the mean
-was 1.51 reference islands and the median was 1 (27{,}784 detector islands in
-total), indicating a small number of localized regions rather than signal
-distributed uniformly across the transcript (Fig.~\ref{fig:cores}A). Because an
-island can cross splice junctions, the 27{,}784 islands comprise 43{,}506 genomic
-segments.
 
-To assess cross-species correspondence, we evaluated matches between reference and
-query islands. About half of
-matched islands (50.1\%) overlap annotated ncRNA regions in the query genome, and
-28.6\% show $\geq 50\%$ exonic overlap.
+We analyzed localized subregions (``islands'') within annotated human lncRNA loci
+to assess cross-species correspondence below the locus level. Reference--query
+island matching uses Smith--Waterman local alignment over the per-token cosine
+similarity matrix, and match strength is reported as an embedding-SW distance
+$d = 1/(1+\mathrm{score})$, with lower values indicating stronger matches
+(Section~\ref{sec:islandalign}).
 
-Together, these observations support a modular pattern of cross-species
-correspondence, with signal concentrated in discrete localized regions rather than
-uniformly distributed across entire transcripts
-\citep{hezroniPrinciplesLongNoncoding2015,rivasEvolutionaryConservationRNA2021,ulitskyEvolutionRescueUsing2016,mattickLongNoncodingRNAs2023,quinnUniqueFeaturesLong2016}.
-This interpretation is broadly consistent with observations from well-characterized
-lncRNAs such as NEAT1, XIST, and MALAT1, in which localized domains have been
-linked to distinct architectural, spreading, or stability-related functions
-\citep{wiluszTripleHelixStabilizes2012,yamazakiFunctionalDomainsNEAT12018,engreitzXistLncRNAExploits2013}.
+Of 34{,}846 annotated human lncRNA union loci, 229 met the compact single-exon
+routing criterion and were processed by the compact-locus workflow rather than
+reference-island detection. Of the remaining 34{,}617 loci, 34{,}532 had a
+retained chain--locus assignment that projected successfully in at least one of
+the 19 comparisons and therefore entered reference-island processing; the other
+85 had no successful candidate-region projection in any comparison.
+
+Among the 34{,}532 processed loci, 18{,}364 (53.2\%) contained at least one
+reference island. Island-positive loci contained a mean of 1.51 reference islands
+and a median of 1, yielding 27{,}784 detected islands in total
+(Fig.~\ref{fig:cores}A). Because islands may cross splice junctions, these
+intervals corresponded to 43{,}506 genomic segments. Thus, when detector-positive
+signal was present, it was generally concentrated in a small number of localized
+regions within the union exon model.
+
+Across accepted matches in the multi-species panel, embedding-SW distance was
+moderately anticorrelated with effective aligned length
+(Spearman $\rho \approx -0.64$), and the median effective aligned length was
+approximately 150\,nt. Matches below the median aligned length had a median
+distance of approximately 0.06, compared with approximately 0.03 for matches at
+or above the median. This length dependence confirms that $d$ reflects both
+alignment extent and per-position similarity and should not be interpreted as a
+calibrated or length-normalized similarity measure
+(Section~\ref{sec:islandalign}).
+
+In the controlled Rfam-derived matcher benchmark, the embedding-SW score
+distinguished planted same-family pairs from different-family pairs with
+ROC-AUC 0.993 and localized the planted core in all 140 positive pairs. This
+benchmark is a controlled sanity check of the local matcher rather than an
+estimate of genome-wide annotation accuracy
+(Section~\ref{sec:islandalign}).
+
+In the human--mouse comparison, 50.1\% of accepted query-island matches
+overlapped an annotated mouse ncRNA exon by at least 1\,nt, and 28.6\% had at
+least 50\% of their length covered by annotated exons.
+
+Together, these observations are consistent with a modular pattern of
+cross-species correspondence, in which detectable similarity is concentrated in
+localized regions rather than distributed uniformly across the annotated locus
+\citep{hezroniPrinciplesLongNoncoding2015,
+  rivasEvolutionaryConservationRNA2021,
+  ulitskyEvolutionRescueUsing2016,
+  mattickLongNoncodingRNAs2023,
+  quinnUniqueFeaturesLong2016}.
+This interpretation is also compatible with well-characterized lncRNAs such as
+NEAT1, XIST, and MALAT1, in which distinct localized domains contribute to
+different molecular functions
+\citep{wiluszTripleHelixStabilizes2012,
+  yamazakiFunctionalDomainsNEAT12018,
+  engreitzXistLncRNAExploits2013}.
 
 \subsubsection{Multi-species recurrent cores}
-Here, ``core'' refers operationally to an island showing recurrent
-accepted matches across multiple species within syntenically projected
-loci. We observe a subset of islands that exhibit reproducible cross-species
-matches (Fig.~\ref{fig:cores}B--C). Figure~\ref{fig:cores}B starts from 31{,}977
-reference-coordinate cores having at least one accepted match in any query genome;
-it therefore excludes loci without a detected reference island and islands with
-no accepted match. Within this conditional denominator, 87\% are recovered in at least
-two query genomes, 67\% in five or more query genomes, and approximately 2\% are
-detected across all 19 query genomes, including the marsupial outgroups (opossums and
-wallaby). An absent species in this aggregation can reflect either missing
-projection or failure to obtain an accepted match; the bar plot does not separate
-those outcomes.
-The two counts use different universes. The 27{,}784 detector islands are unique
-islands detected in human lncRNA loci before projection. The 31{,}977 cores are
-reconstructed from accepted match rows across all 19 species runs and all
-island-branch biotypes; species-run-specific genomic segments are subsequently
-aggregated by overlap in human reference coordinates.
 
-In contrast to locus-level overlap, which is often incomplete or ambiguous, these
-cores exhibit recurrent cross-species correspondence at the level of localized
-embedding similarity. To assess whether such matches could arise from selecting
-the best of many candidate positions within a syntenic window, we compared each
-matched query island against same-length windows tiled across its own projected
-syntenic locus (a within-locus positional null; representative genome pairs). The
-assigned match showed strong cross-locus specificity: among 250 pairs per
-comparison, the assigned query ranked in the top 5\% for 69\% of human--cow and
-65\% of human--mouse reference islands, and assigned-versus-cross-locus AUCs were
-0.907 and 0.898, respectively. Assigned pairs were closer than their
-dinucleotide-preserving query shuffles in 94\% and 92\% of cases. In the
-within-locus analysis, 287 cow and 308 mouse loci contained at least one
-non-overlapping alternative. The assigned interval outscored every such
-alternative in 189/287 (65.9\%) and 202/308 (65.6\%) loci, compared with mean
-locus-specific chance probabilities of 15.6\% and 15.9\%. This enrichment remained
-well above chance in strata containing 20 or more alternatives (50\% versus
-approximately 3\% for cow and 58\% versus approximately 3\% for mouse). These
-controls provide evidence against cross-locus, composition-only, and simple
-best-of-many positional artifacts in the tested loci, without establishing that
-every matched island is functional. Although substantially above the
-locus-specific chance expectation, the assigned interval was not the top-scoring
-non-overlapping alternative in approximately one third of evaluable loci,
-indicating substantial residual positional ambiguity.
+Here, a ``core'' is defined operationally as a human reference-coordinate region
+with accepted localized-subregion matches in one or more query genomes.
+Species-specific reference islands are assigned to the same core when their human
+coordinates overlap within the same gene.
 
-A complementary score-reducibility analysis asked whether the island score adds
-ranking information beyond nucleotide identity, local sequence alignment, k-mer
-similarity, composition, and length. Adding embedding-SW to the multivariate
-sequence-only baseline improved discrimination of CURIA-assigned partners from
-cross-locus alternatives in both tested samples: ROC-AUC increased from 0.897 to
-0.935 for human--mouse ($\Delta=+0.038$, 95\% cluster-bootstrap CI
-$[0.022,0.056]$) and from 0.912 to 0.952 for human--cow ($\Delta=+0.040$,
-$[0.026,0.055]$). In the prespecified low-sequence-similarity subset,
-embedding-SW retained substantially stronger discrimination than nucleotide
-Smith--Waterman (AUC 0.798 versus 0.615 for human--mouse and 0.796 versus 0.616
-for human--cow). Within the same syntenic locus, embedding-SW also ranked the
-pipeline-selected match first more often than nucleotide Smith--Waterman (31.0\%
-versus 18.4\% for human--mouse; 24.4\% versus 11.6\% for human--cow). This
-assignment-reproduction analysis evaluates recovery of the CURIA-assigned partner, not whether that
-partner is the true biological ortholog.
+Across all biotypes processed by the localized-subregion workflow, aggregation of
+accepted matches from the 19 comparisons produced 31{,}977 reference-coordinate
+cores with at least one accepted match
+(Fig.~\ref{fig:cores}B--C). This is a conditional denominator that excludes
+detected reference islands for which no accepted query match was obtained.
+Among these cores, 87\% had accepted matches in at least two query genomes, 67\%
+in at least five, and approximately 2\% in all 19 query genomes, including the
+three marsupial genomes. Absence of a species may reflect either failure to
+obtain a projected candidate region or failure to identify an accepted match
+within that region.
 
-\subsection{Near-panel-wide recurrent cores and coding proximity}
-The 1{,}693-locus result follows a defined funnel. The reference contains
-34{,}846 annotated human lncRNA union gene loci; 34{,}532 entered the island branch
-in at least one genome comparison, 18{,}364 had at least one reference island, and
-11{,}328 of those were projectable in at least 17 query genomes. Requiring an
-accepted match for the same reference-coordinate core in $\geq17$ genomes retained
-1{,}761 annotated lncRNA gene loci before reference-length filtering and 1{,}693
-after requiring a mean reference-island length of at least 120\,bp. The historical
-aggregate mean-distance cutoff of 0.10 adds no independent stringency because the
-individual accepted rows are already bounded at $d\leq0.10$. The final stages are aggregated by versionless ENSG identifier;
-thus, 1{,}693 counts gene loci, not individual islands or de novo lncRNA annotations.
-This operational
-threshold allows two biological or technical non-detections; failure to recover a
-core is not by itself interpreted as lineage-specific absence. Of these loci, 379
-are intergenic relative to human protein-coding annotations (no overlap and more
-than 5\,kb from a coding gene). The
-full set of loci (all conservation categories) is provided as a supplementary
-table in the repository:
-\url{https://github.com/kirilenkobm/CURIA_pipeline/blob/master/paper/lncRNAs_with_conserved_cores.tsv}.
-These loci
-represent candidate recurrent cores within known human lncRNA loci and may include
-false positives despite filtering.
-The intergenic subset shows that the screen is not restricted to direct overlap
-with protein-coding genes, although conservation of other DNA-level regulatory or
-repetitive elements remains a possible confounder.
+The 31{,}977 aggregated cores and the 27{,}784 reference detector islands
+reported above are not directly comparable counts. The latter are unique islands
+detected in human lncRNA union exon models, whereas the former are reconstructed
+from accepted match rows across all species comparisons and all biotypes routed
+to the localized-subregion workflow. Species-specific reference intervals are
+merged into cores by overlap in human reference coordinates.
 
-Because the matcher accepts island matches at embedding-SW distance $d\leq0.10$,
-the broad threshold
-primarily defines recurrence and coverage rather than stringent per-species match
-quality. We therefore repeated the 17-of-19 quorum analysis while imposing the
-same stricter distance cutoff in every counted species. The broad set contained
-1{,}693 loci; requiring $d\leq0.05$, $0.03$, and $0.02$ retained 784, 379, and
-170 loci, respectively, including 187, 103, and 42 intergenic loci. Even the
-ultra-stringent $d\leq0.01$ cutoff retained 21 loci. These nested subsets show
-that the recurrent signal is not confined to matches near the acceptance ceiling,
-while also making clear that the broad set is substantially larger than the
-high-confidence subsets.
+We next tested whether accepted matches could be explained by cross-locus
+similarity, local nucleotide composition, or selection of the best among many
+positions within a projected locus. In the cross-locus analysis, the assigned
+query partner ranked within the top 5\% of the sampled candidate pool for 69\%
+of human--cow and 65\% of human--mouse reference islands. The corresponding
+assigned-versus-cross-locus ROC-AUC values were 0.907 and 0.898. Assigned pairs
+also had lower embedding-SW distances than dinucleotide-preserving shuffles of
+their query sequences in 94\% of human--cow and 92\% of human--mouse cases.
+
+The within-locus positional analysis included 287 human--cow and 308
+human--mouse loci with at least one non-overlapping alternative window. The
+assigned interval outscored all alternatives in 189 of 287 cow loci (65.9\%)
+and 202 of 308 mouse loci (65.6\%), compared with mean locus-specific chance
+probabilities of 15.6\% and 15.9\%, respectively. Among loci containing at least
+20 alternatives, the assigned interval ranked first in 50\% of cow loci and
+58\% of mouse loci, compared with a chance expectation of approximately 3\%.
+Nevertheless, the assigned interval did not rank first in approximately one
+third of evaluable loci, indicating substantial residual positional ambiguity.
+
+Together, these controls argue against purely cross-locus, composition-driven,
+or simple best-of-many positional explanations for the observed matches in the
+tested human--mouse and human--cow samples. They do not establish biological
+function or evolutionary orthology for individual cores.
+
+A complementary score-reducibility analysis
+(Section~\ref{sec:sequence-baselines}) tested whether embedding-SW provided
+ranking information beyond nucleotide identity, local sequence alignment,
+k-mer similarity, nucleotide composition, and length. Adding embedding-SW to
+the multivariate sequence-only baseline increased ROC-AUC from 0.897 to 0.935
+for human--mouse
+($\Delta=+0.038$, 95\% cluster-bootstrap CI $[0.022,0.056]$)
+and from 0.912 to 0.952 for human--cow
+($\Delta=+0.040$, 95\% cluster-bootstrap CI $[0.026,0.055]$).
+
+Within the prespecified low-sequence-similarity subset, embedding-SW showed
+greater discrimination than nucleotide Smith--Waterman: ROC-AUC was 0.798
+versus 0.615 for human--mouse and 0.796 versus 0.616 for human--cow.
+Within the same projected locus, embedding-SW also ranked the
+\curia{}-assigned partner first more often than nucleotide Smith--Waterman
+(31.0\% versus 18.4\% for human--mouse and 24.4\% versus 11.6\% for
+human--cow). This analysis measures reproduction of the pipeline's assignment
+rather than identification of a known biological counterpart.
+
+\subsection{Broadly recurrent cores across the species panel and coding proximity}
+
+Human lncRNA annotation contains tens of thousands of loci, but the degree of
+biological and mechanistic characterization varies widely
+\citep{statelloGeneRegulationLong2021,mattickLongNoncodingRNAs2023}.
+We therefore asked whether recurrence across a broad species panel could define
+smaller sets of loci for further investigation.
+
+The near-panel-wide recurrent set was obtained through a defined filtering
+funnel. The reference annotation contained 34{,}846 human lncRNA union loci.
+Of these, 229 satisfied the compact single-exon routing criterion and were
+processed by the compact-locus workflow, while 85 lacked a successful
+candidate-region projection in all 19 comparisons. The remaining 34{,}532 loci
+entered the localized-subregion workflow.
+
+Among these loci, 18{,}364 contained at least one detected reference island, and
+11{,}328 were projectable in at least 17 query genomes. Requiring the same
+reference-coordinate core to have an accepted match in at least 17 genomes
+retained 1{,}761 annotated lncRNA loci. Applying the additional requirement that
+the mean length of the retained species-specific reference-island intervals was
+at least 120\,bp yielded a broad recurrent set of 1{,}693 loci
+(Table~\ref{tab:core-funnel}).
+
+Accepted per-species matches already satisfy the pipeline threshold
+$d \leq 0.10$; an additional cutoff on the mean distance across species therefore
+does not impose substantial independent stringency. Final locus counts are
+aggregated by version-stripped Ensembl gene identifier, so the 1{,}693 entries
+represent annotated human lncRNA gene loci rather than individual islands or
+newly inferred lncRNA annotations.
+
+The 17-of-19 recurrence criterion permits two biological or technical
+non-detections. Failure to recover a core in an individual genome may reflect
+projection failure, insufficient embedding similarity, assembly limitations, or
+true evolutionary divergence and is not interpreted by itself as lineage-specific
+absence.
+
+Of the 1{,}693 loci, 379 were intergenic relative to human protein-coding gene
+annotations, defined as neither overlapping nor lying within 5\,kb of a
+protein-coding gene. The presence of this intergenic subset shows that the
+recurrent set is not restricted to loci directly overlapping protein-coding
+genes. However, conservation of other DNA-level regulatory or repetitive
+elements remains a possible confounding source of signal.
+
+Because the broad recurrent set is defined primarily by species coverage and the
+pipeline-wide acceptance threshold, we repeated the 17-of-19 analysis using
+stricter per-species distance requirements. Requiring every counted species to
+satisfy $d \leq 0.05$, $0.03$, and $0.02$ retained 784, 379, and 170 loci,
+respectively, of which 187, 103, and 42 were intergenic. A threshold of
+$d \leq 0.01$ retained 21 loci. These nested sets show that recurrent matches are
+not confined to scores near the pipeline acceptance threshold, while also
+demonstrating that the broad recurrent set is substantially larger than the
+more stringently filtered subsets.
 
 \begin{table}[t]
   \centering
-  \caption{Funnel from annotated human lncRNA gene loci to the near-panel recurrent-core set.}
+  \caption{Filtering funnel from annotated human lncRNA gene loci to the broad
+  recurrent-core set.}
   \label{tab:core-funnel}
   \begin{tabular}{llr}
     \toprule
     Stage & Unit & Count \\
     \midrule
-    Annotated human lncRNA union loci & gene locus & 34{,}846 \\
-    Entered island processing in at least one comparison & gene locus & 34{,}532 \\
-    At least one detector island & gene locus & 18{,}364 \\
-    Projectable in at least 17 query genomes & gene locus & 11{,}328 \\
-    Gene locus with $\geq1$ core matched in $\geq17$ genomes & gene locus & 1{,}761 \\
-    After mean reference-island length $\geq120$\,bp & gene locus & 1{,}693 \\
-    Intergenic relative to protein-coding genes ($>5$\,kb) & gene locus & 379 \\
+    Annotated human lncRNA union loci
+    & gene locus & 34{,}846 \\
+    Entered localized-subregion processing in at least one comparison
+    & gene locus & 34{,}532 \\
+    Contained at least one detected reference island
+    & gene locus & 18{,}364 \\
+    Projectable in at least 17 query genomes
+    & gene locus & 11{,}328 \\
+    Contained at least one core matched in at least 17 genomes
+    & gene locus & 1{,}761 \\
+    After mean reference-island length $\geq120$\,bp
+    & gene locus & 1{,}693 \\
+    Intergenic relative to protein-coding genes ($>5$\,kb)
+    & gene locus & 379 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 \begin{table}[t]
   \centering
-  \caption{Sensitivity of recurrent-core counts to the per-species embedding-SW distance
-  cutoff at a fixed quorum of at least 17 of 19 query assemblies.}
+  \caption{Sensitivity of recurrent-core counts to the per-species embedding-SW
+  distance cutoff at a fixed quorum of at least 17 of 19 query genomes.}
   \label{tab:core-distance-sensitivity}
   \begin{tabular}{lrrrrr}
     \toprule
-    Embedding-SW cutoff & Required species & Cores & lncRNA loci & \% broad & Intergenic loci \\
+    Embedding-SW cutoff & Required species & Cores & lncRNA loci & \% broad set & Intergenic loci \\
     \midrule
     $d\leq0.10$ & $\geq17$ & 1{,}813 & 1{,}693 & 100.0 & 379 \\
     $d\leq0.05$ & $\geq17$ & 837 & 784 & 46.3 & 187 \\
@@ -270,95 +337,115 @@ high-confidence subsets.
   \end{tabular}
 \end{table}
 
-Core identity is anchored to the human reference coordinates: overlapping
-reference intervals are merged across species, whereas non-overlapping intervals
-within the same gene remain separate cores. Among the cores passing the 17/19
-screen, none contained pairwise-disjoint reference intervals joined by transitive
-overlap.
+Core identity is anchored to human reference coordinates. Species-specific
+reference intervals that overlap within the same gene are assigned to the same
+core, whereas non-overlapping intervals remain separate. Among cores passing the
+17-of-19 screen, none were formed by transitively merging pairwise-disjoint
+reference intervals.
 
 \subsection{Case studies}
-To illustrate the behavior of \curia{}, we examined individual loci
-(Fig.~\ref{fig:cases}). Projection of human SNORD57 to mouse identifies a match
-precisely localized over annotated Snord57, illustrating recovery of a strongly
-conserved compact ncRNA. Projection of human RNU6-7 intersects an
-annotated mouse locus (Gm24859). Projection of human vault RNA
-(ENSG00000199990) identifies a corresponding locus overlapping mouse Vaultrc5; the
-matched region differs in length from the human transcript, yet \curia{} localizes
-the most similar segment within the syntenic region. Quantitatively, the SNORD57
-projection overlaps annotated mouse Snord57 at 74\% edit-derived identity
-(reported MMD 0.00), and RNU6-7 overlaps Gm24859 at 93\% edit-derived identity (reported MMD
-0.00). The vault-RNA projection overlaps Vaultrc5 despite lower sequence
-similarity (59\% edit-derived identity; normalized nucleotide-SW
-score 0.35; MMD 0.14), illustrating localization across examples spanning a
-broad range of sequence conservation.
+
+To illustrate the behavior of \curia{}, we examined three representative compact
+ncRNA loci (Fig.~\ref{fig:cases}). Projection of human SNORD57 to mouse identified
+a match localized over the annotated \textit{Snord57} locus, illustrating recovery
+of a strongly conserved compact ncRNA. The human RNU6-7 projection intersected
+the annotated mouse locus \textit{Gm24859}. For human vault RNA
+(ENSG00000199990), \curia{} identified a corresponding region overlapping
+\textit{Vaultrc5}; although the predicted mouse interval differed in length from
+the human transcript, the method localized the best-matching segment within the
+syntenic search region.
+
+The SNORD57 and RNU6-7 predictions overlapped their respective mouse annotations
+with edit-derived identities of 74\% and 93\%, and both had reported MMD values
+of 0.00. The vault-RNA prediction overlapped \textit{Vaultrc5} despite lower
+sequence similarity
+(59\% edit-derived identity; normalized nucleotide-SW score 0.35; MMD 0.14).
+These examples span a range of primary-sequence conservation and were examined
+further using exploratory ViennaRNA-based structure comparisons.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{fig5_cases.png}
-  \caption{Recovery of short ncRNA loci across species using \curia{}. Genome
-  browser snapshots (UCSC) illustrating representative examples of short ncRNA
-  projection from human (hg38) to mouse (mm39): a precisely localized SNORD57 match,
-  RNU6-7 intersecting Gm24859, and a localized vault-RNA match with differing
-  boundaries. SNORD57 has 74\% edit-derived identity and reported MMD 0.00;
-  RNU6-7 has 93\% edit-derived identity and reported MMD 0.00; and the vault-RNA
-  match overlapping Vaultrc5 has 59\% edit-derived identity, normalized
-  nucleotide-SW score 0.35, and MMD 0.14.}
+  \caption{Representative compact ncRNA projections from human
+    (\texttt{hg38}) to mouse (\texttt{mm39}). Genome-browser views show a
+    localized SNORD57 match overlapping \textit{Snord57}, an RNU6-7 prediction
+    intersecting \textit{Gm24859}, and a vault-RNA prediction overlapping
+    \textit{Vaultrc5} with different interval boundaries. SNORD57 and RNU6-7 had
+    edit-derived identities of 74\% and 93\%, respectively, with reported MMD
+    values of 0.00. The vault-RNA match had 59\% edit-derived identity, normalized
+    nucleotide-SW score 0.35, and MMD 0.14.}
   \label{fig:cases}
 \end{figure}
 
 \subsection{Exploratory comparison with predicted secondary structure}
-We compared the representative short-ncRNA intervals and four accepted MALAT1
-recurrent-core matches with alignment-aware ViennaRNA predictions. RNU6-7, used
-here as a positive control, showed near-identical predicted pairing after mapping
-the human and mouse base-pair probability matrices into shared alignment
-coordinates, whereas SNORD57 showed partial agreement. Vault RNA exhibited
-prominent long-range pairing in both predicted folds but weak alignment-aware
-contact correspondence. Among the MALAT1 examples, R5 showed the strongest and
-most stable moderate agreement across the tested boundaries and folding
-procedures; R4 was weak and boundary-dependent, R3 was weak and inconsistent
-between global and local folding, and R2 was weak and near background
-(Supplementary Figures S1--S7 and Supplementary Table S1). These heterogeneous
-outcomes indicate that embedding similarity is neither interchangeable with
-nucleotide similarity nor uniformly reflected in ViennaRNA-predicted structural
-similarity. This exploratory analysis does not establish structural conservation,
-RNA function, or orthology.
+
+We compared the three representative compact ncRNA pairs and four accepted
+MALAT1 recurrent-core matches using alignment-aware ViennaRNA predictions.
+Base-pair probability matrices for the human and mouse sequences were mapped into
+shared nucleotide-alignment coordinates before comparison.
+
+RNU6-7, included as a positive control, showed nearly identical predicted pairing,
+whereas SNORD57 showed partial structural agreement. Both vault-RNA sequences
+contained prominent predicted long-range pairing, but their alignment-aware
+base-pair contacts showed little correspondence. Among the MALAT1 examples, R5
+showed the strongest and most stable moderate agreement across the tested window
+boundaries and folding procedures. R4 showed weak, boundary-dependent agreement;
+R3 showed weak agreement that differed between global and local folding; and R2
+remained consistently near zero across the tested windows
+(Supplementary Figures S1--S7 and Supplementary Table S1).
+
+These heterogeneous results show that strong embedding-based correspondence is
+not uniformly accompanied by similar ViennaRNA-predicted base-pairing patterns.
+The analysis is exploratory and does not establish structural conservation,
+biological function, or evolutionary orthology.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{fig6_cores.pdf}
-  \caption{Modular and heterogeneous cross-species correspondence of localized regions.
-  \textbf{(A)} Cross-species matching of core regions for representative lncRNAs
-  (NEAT1, MIAT, MALAT1, XIST, NORAD); rows are species, columns are reference cores ordered along
-  the transcript, color indicates embedding-SW distance $d=1/(1+s)$. \textbf{(B)} Distribution of
-  core reproducibility across species. \textbf{(C)} Median island-level match
-  distance across species. This descriptive quantity is length-dependent and does
-  not follow a strictly monotonic phylogenetic gradient. Panel (B) is conditional
-  on the 31{,}977 aggregated reference-coordinate cores with at least one accepted
-  match; loci without a detected island and islands without any accepted match are
-  not in its denominator. This set contains 30{,}926 cores from loci annotated as
-  lncRNA and 1{,}051 from other island-branch biotypes. Missing projection and failed matching both appear as an
-  absent species in this panel.}
+  \caption{Cross-species recurrence and match strength of localized
+  embedding-supported regions.
+  \textbf{(A)} Accepted matches for reference cores in representative lncRNA loci
+    (NEAT1, MIAT, MALAT1, XIST, and NORAD). Rows represent query species, columns
+    represent reference cores ordered along the human locus, and color indicates
+    embedding-SW distance $d=1/(1+s)$.
+    \textbf{(B)} Distribution of the number of query genomes containing an accepted
+    match for each aggregated reference-coordinate core.
+    \textbf{(C)} Median embedding-SW distance across accepted matches for each query
+    genome. This descriptive score is length-dependent and does not show a strictly
+    monotonic relationship with phylogenetic distance.
+    Panel \textbf{(B)} is conditional on the 31{,}977 aggregated
+    reference-coordinate cores with at least one accepted match. Loci without a
+    detected reference island and islands without an accepted match are excluded
+    from this denominator. The set contains 30{,}926 cores from loci annotated as
+    lncRNA and 1{,}051 from other biotypes processed by the localized-subregion
+    workflow. Both unsuccessful projection and failure to obtain an accepted match
+    appear as an absent species.}
   \label{fig:cores}
 \end{figure}
 
-\subsection{Error analysis}
-The dominant failure modes arise from limitations in projection, annotation, and
-signal strength. Chain-based projection defines the search space and acts as a
-hard constraint: if the corresponding region is not captured by genome alignments,
-it cannot be recovered. Assembly gaps, base-level errors, and fragmentation can
-remove or distort chain coverage and therefore propagate into missed or fragmented
-predictions. Incomplete and imprecise reference annotations further
-limit recoverable signal, particularly for lncRNAs. A substantial fraction of loci
-exhibit weak or diffuse embedding signal, producing no detectable islands or only
-fragmented matches. Overall, most observed failures are associated with missing or
-ambiguous signal and projection constraints, rather than instability of the
-downstream matching procedure.
+\subsection{Observed limitations and failure modes}
+
+Recovery depends first on successful chain-based projection of the corresponding
+query region. Loci absent from the available genome alignments, or affected by
+assembly gaps, fragmentation, and local sequence errors, may therefore be missed
+or only partially projected. Incomplete or imprecise reference annotations can
+further limit the recoverable signal, particularly for long and structurally
+complex ncRNA loci.
+
+Among successfully projected loci, some union exon models contain weak, diffuse,
+or fragmented detector-positive signal and consequently yield no reference
+islands or no accepted reference--query matches. These cases can reflect genuine
+divergence, incomplete assemblies or annotations, insufficient detector
+sensitivity, or limitations of the embedding-based matcher. The current
+evaluation does not systematically distinguish among these causes.
 
 \subsection{Runtime and scalability}
-We evaluated \curia{} on the 19 genome-pair panel. On a single NVIDIA RTX PRO
-4500 GPU, a full genome-pair run takes approximately three hours, with runtime
-scaling approximately linearly with annotation size.
-Embedding inference is performed on GPU with batched execution, while downstream
-matching and alignment are CPU-bound; both reference and query island detection
-are restricted to syntenically projected regions, substantially reducing the
-effective search space.
+
+Across the 19 genome-pair panel, a complete reference--query run required
+approximately three hours on a single NVIDIA RTX PRO 4500 GPU under the benchmark
+configuration used here. Embedding inference was performed on GPU using batched
+execution, whereas MMD computation, local matching, assignment, and filtering
+were performed on CPU.
+
+Intermediate reference-side results were persisted and reused across
+query-genome runs.

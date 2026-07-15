@@ -1,197 +1,241 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\curia{} should be viewed primarily as a proof of concept demonstrating that
-synteny-constrained embedding comparison yields interpretable cross-species signal
-for ncRNA correspondence at genome scale, rather than as a finished annotation
-framework optimized for exhaustive sensitivity or production use. Within this
-framing, several key observations emerge.
+\curia{} should be viewed primarily as a proof of concept showing that
+synteny-constrained embedding comparison can recover informative cross-species
+ncRNA correspondences at genome scale, rather than as a production-ready
+annotation framework optimized for exhaustive sensitivity. Within this framing,
+several main observations emerge.
 
 \subsection{Key findings}
-We show that cross-species ncRNA correspondence can be recovered at genome scale
-using a combination of syntenic constraints and embedding-based similarity. This
-enables identification of candidate corresponding loci even in the absence of
-strong sequence conservation. For compact short ncRNAs, MMD provides a useful
-empirical refinement and ranking score, but in this benchmark it added little
-predictive information beyond the tested sequence metrics, and the increment
-disappeared after miRNAs were excluded. The more distinctive result arose in the
-island branch: localized embedding-SW added ranking information beyond nucleotide
-alignment, identity, k-mer similarity, composition, and length in the tested
-human--mouse and human--cow samples. Island-branch correspondence is frequently
-partial and localized, with signal concentrated in discrete subregions rather
-than spanning full transcripts. Together, these results support
-a model in which cross-species ncRNA correspondence is heterogeneous and modular,
-and can be captured using localized comparison in embedding space.
+
+This study provides a genome-scale proof of concept for identifying candidate
+cross-species ncRNA correspondences by combining syntenic constraints with
+embedding-based similarity. The approach recovered annotation-supported loci and
+localized matches across examples with varying levels of primary-sequence
+similarity.
+
+For compact single-exon ncRNAs, MMD provided an empirical refinement and ranking
+score. The more distinctive result arose from localized-subregion matching: in
+the tested human--mouse and human--cow samples, embedding-SW added ranking
+information beyond nucleotide alignment, identity, k-mer similarity,
+composition, and length.
+
+Accepted correspondences were often restricted to localized subregions rather
+than extending across complete annotated loci. Together, these findings are
+consistent with heterogeneous and modular cross-species ncRNA correspondence and
+show that localized embedding-space comparison can provide information
+complementary to conventional sequence-based measures.
 
 \subsection{Comparison to existing methods}
-Existing approaches provide complementary capabilities for ncRNA detection and
-structural comparison but do not directly address genome-scale correspondence.
-Covariance models require curated family models, while explicit structure
-alignment compares supplied RNA sequences rather than locating corresponding
-elements from genome and reference annotation alone. Genome-wide scanning
-approaches identify candidate RNA elements but do not establish explicit
-cross-species correspondence. Methods specifically targeting
-lncRNA homology are most directly comparable: slncky infers lncRNA orthologs from
-whole-genome alignments using sequence-level conservation signatures, and lncHOME
-groups lncRNAs into families based on conserved genomic position combined with
-patterns of RNA-binding-protein motifs
-\citep{chenEvolutionaryAnalysisMammals2016,huangComputationalPredictionExperimental2024}.
-Both rely on primary-sequence or motif-level signals to define homology. In
-contrast, \curia{} does not require strong end-to-end sequence conservation
-within the ncRNA itself. It combines whole-genome-alignment-derived syntenic
-constraints with embedding-based similarity, so
-correspondence can be proposed for loci where conventional sequence- and
-motif-level similarity provides limited or incomplete evidence, without requiring
-curated families or explicit structural alignment.
+
+Existing methods address complementary aspects of ncRNA discovery, homology, and
+structural comparison. Covariance-model approaches identify members of curated
+RNA families, whereas structure-aware alignment methods compare already defined
+RNA sequences. Comparative genome-wide screens can detect candidate conserved
+RNA elements but are not designed primarily for reference-guided transfer of
+individual ncRNA annotations.
+
+Methods developed specifically for lncRNA evolution are more directly comparable.
+slncky combines transcript discovery with whole-genome-alignment-based analysis
+of sequence conservation and syntenic correspondence
+\citep{chenEvolutionaryAnalysisMammals2016}. lncHOME identifies lncRNAs with
+conserved genomic positions and related patterns of RNA-binding-protein motifs,
+and uses these features to define candidate homologous families across
+vertebrates
+\citep{huangComputationalPredictionExperimental2024}. These approaches have
+demonstrated that subsets of lncRNAs can be traced across substantial
+evolutionary distances using sequence-, position-, expression-, or motif-based
+evidence.
+
+\curia{} addresses a related but distinct setting. It starts from a reference
+annotation, a query genome, and pairwise genome alignment chains, without
+requiring a query-side transcript annotation, a curated RNA-family model, or
+predefined RNA-binding motifs. Within syntenically projected loci, it localizes
+and ranks candidate corresponding subregions using RNA-language-model
+representations. This design is intended for loci in which correspondence may be
+restricted to localized regions and conventional sequence-level evidence is
+weak, heterogeneous, or incomplete.
+
+The present results do not establish that embedding-based matching supersedes
+existing homology methods. Rather, they indicate that localized embedding
+similarity can provide an additional comparative signal that may be integrated
+with sequence conservation, transcript evidence, structural models, and
+functional genomic data.
 
 \subsection{Biological implications}
-Beyond the modular correspondence pattern noted above, two observations bear on
-interpretation. For island-branch loci, correspondence frequently concentrates in compact
-subregions within broader transcript contexts in which \curia{} detects substantially
-less localized embedding-supported correspondence. For short ncRNAs, although embedding-based similarity is strongly
-associated with sequence identity, the relationship is not uniform: at intermediate
-sequence identity ($\approx 40$--$60\%$), substantial variability is observed,
-indicating that loci with comparable sequence similarity can exhibit markedly
-different embedding-based similarity.
 
-The island-based representation provides a practical way to capture this behavior:
-recurrent embedding-supported islands define candidate corresponding regions, while
-intervening regions show less detected localized correspondence. Correspondence patterns also vary
-across RNA classes: compact RNAs such as tRNAs and snoRNAs show strong and
-consistent signal, whereas lncRNA loci more often exhibit partial or fragmented
-correspondence
-\citep{hezroniPrinciplesLongNoncoding2015,ulitskyEvolutionRescueUsing2016,mattickLongNoncodingRNAs2023}.
-Together, these observations support a model in which recurrent candidate elements
-are embedded within broader transcript contexts showing substantially less localized
-embedding-supported correspondence, emphasizing
-the importance of localized comparison in cross-species ncRNA analysis.
+For loci processed by the localized-subregion workflow, accepted
+cross-species correspondences were often confined to compact regions within
+broader annotated loci. This pattern is consistent with the view that
+evolutionarily retained information in lncRNAs may be concentrated in localized
+elements rather than distributed uniformly across the complete transcript
+\citep{hezroniPrinciplesLongNoncoding2015,
+    ulitskyEvolutionRescueUsing2016,
+    mattickLongNoncodingRNAs2023}.
+
+Embedding-based similarity was correlated with conventional sequence similarity,
+but the relationship was not one-to-one. A subset of candidate correspondences
+showed low nucleotide identity despite strong embedding similarity, indicating
+that the two measures can rank the same pairs differently.
+
+The localized-subregion representation provides a practical way to capture this
+heterogeneity. Recurrently matched islands define candidate corresponding regions,
+whereas other parts of the same annotated locus may show no detectable localized
+match under the current model. Correspondence patterns also differ among RNA
+classes: compact RNAs such as tRNAs and snoRNAs generally show stronger and more
+consistent signal, whereas lncRNA loci more often yield partial or fragmented
+matches.
 
 Given the heterogeneity of lncRNA evolution and annotation, a single universal
 orthology criterion may be premature. A more tractable near-term objective is to
-stratify candidate correspondence by the strength and type of comparative
-evidence. Recurrently matched candidate cores provide one such evidence layer,
-defining subsets that can be prioritized for subsequent functional and
-evolutionary investigation without treating recurrence alone as proof of
-orthology or function.
+stratify candidate correspondences according to the strength and type of
+comparative evidence. Recurrently matched candidate cores provide one such
+evidence layer and define subsets that can be prioritized for subsequent
+functional and evolutionary investigation, without treating recurrence alone as
+evidence of orthology or function.
 
 \subsection{Limitations}
-This study has several limitations related to data availability, modeling
-assumptions, and evaluation. First, the lack of reliable ground truth for
-cross-species ncRNA correspondence remains a major challenge; existing annotations
-are incomplete and heterogeneous across species, and transcript boundaries---particularly
-for lncRNAs---are often ambiguous. As a result, evaluation based on
-annotation overlap provides only an approximate and conservative estimate of
-performance.
 
-The recurrent-core screen also separates coverage from match quality. At the
-pipeline acceptance ceiling ($d\leq0.10$), the 17-of-19 set contains 1{,}693
-lncRNA loci, whereas requiring the same distance cutoff in every counted species
-reduces this to 170 loci at $d\leq0.02$ and 21 at $d\leq0.01$. These stricter
-subsets provide useful high-confidence candidates, but the distance is a
-length-dependent ranking statistic rather than a calibrated probability, so the
-cutoffs should be interpreted as sensitivity analyses rather than definitive
-biological quality classes.
+The principal limitation is the absence of reliable ground truth for
+cross-species ncRNA correspondence. Existing annotations are incomplete and
+heterogeneous across species, and transcript boundaries---particularly for
+lncRNAs---are often ambiguous. Annotation overlap therefore provides an
+approximate measure of agreement rather than a direct estimate of biological
+accuracy.
 
-Second, \curia{} depends on the availability and quality of genome alignment
-chains. Because the search space is restricted to aligned regions, correspondence
-cannot be recovered outside chain coverage, and errors or fragmentation in
-alignments propagate directly to downstream predictions. In addition, the
-candidate-region classification step is adapted from protein-coding gene
-projection and may not fully capture the diversity of ncRNA correspondence
-patterns.
+The recurrent-core analysis also separates species coverage from match
+stringency. At the pipeline acceptance threshold of $d\leq0.10$, the 17-of-19
+set contains 1{,}693 lncRNA loci, whereas requiring every counted species to
+satisfy $d\leq0.02$ or $d\leq0.01$ retains 170 and 21 loci, respectively.
+Because embedding-SW distance depends on aligned length as well as per-position
+similarity, these nested sets should be interpreted as sensitivity analyses
+rather than calibrated biological confidence classes.
 
-Third, the method relies on embedding representations derived from RNA foundation
-models. Although RiNALMo \citep{penicRiNALMoGeneralpurposeRNA2025} provides a
-practical representation, it may not capture all relevant structural features.
-The island detector was trained on annotated compact ncRNAs enriched for structured
-RNA classes against genomic background. A genuine lncRNA core whose embedding pattern lies outside that
-positive class may therefore be classified as background and never reach the
-matcher. Repository held-out-family analyses show broad generalization across
-structured-RNA families but substantially weaker recall for lncRNA, consistent
-with this failure mode. In particular, \curia{} is primarily sensitive to localized
-signal in embedding space and does not model long-range interactions or global RNA
-architecture. Because it assumes approximate collinearity within candidate regions
-and scores local similarity, it does not capture rearrangements of structured
-elements; loci lacking localized embedding signal are unlikely to yield detectable
-correspondence.
+\curia{} also depends on the availability and quality of whole-genome alignment
+chains. Corresponding regions outside chain coverage cannot be recovered, and
+assembly gaps, fragmentation, or alignment errors can propagate into missed or
+distorted candidate regions. The candidate-region classifier is adapted from the
+chain-based orthology framework used in TOGA
+\citep{kirilenkoIntegratingGeneAnnotation2023}. Although its thresholds and
+routing were adjusted for ncRNA analysis, its features retain assumptions derived
+from protein-coding gene projection and may not capture the full diversity of
+ncRNA locus evolution.
 
-Fourth, \curia{} does not establish transcriptional activity or molecular
-function; predicted regions represent candidate corresponding elements and require
-additional transcriptomic or experimental validation. Annotation-discordant calls
-have several competing interpretations---missing or imprecise query annotation,
-projection or assembly error, correspondence to a different nearby element, or a
-false-positive match---which cannot be resolved from interval overlap alone. We
-therefore report annotation agreement rather than treating it as either precision
-or recall.
+The method further depends on the representation learned by the RNA foundation
+model and on the detector trained in that embedding space. The current detector
+was trained to distinguish windows associated with annotated compact ncRNA
+classes from sampled genomic background. A genuine lncRNA element whose
+representation differs from those training classes may therefore receive a low
+detector score and never reach the local matcher. Held-out-family analyses showed
+broader generalization among structured-RNA families than for lncRNAs, consistent
+with this limitation.
 
-Recurrent island matches may also include repeat-derived RNA segments, conserved
-DNA elements, or other sequence features that are not specific to RNA structure
-or function. Systematic stratification using RepeatMasker annotations is therefore
-a useful future extension, although this possible confounding does not by itself
-invalidate the observed matches.
+More generally, \curia{} is sensitive to localized similarity represented by the
+selected embedding model. It does not explicitly model long-range interactions,
+global RNA architecture, or rearrangement of functional elements within a locus.
+The framework itself is not tied to RiNALMo: alternative embedding models,
+detectors, and matching functions can be substituted, but their behavior and
+boundary sensitivity would require separate calibration and evaluation.
 
-Finally, \curia{} does not explicitly distinguish between shared evolutionary
-origin and convergent similarity at the level of embedding space. While synteny
-strongly biases predictions toward corresponding loci with shared ancestry,
-embedding similarity may also capture convergent structural features or recurrent
-local motifs. Accordingly, high-confidence matches should be interpreted as
-candidate corresponding elements supported by both synteny and embedding
-similarity, rather than definitive evidence of shared evolutionary origin.
+Predicted regions do not establish transcriptional activity, molecular function,
+or evolutionary orthology. An annotation-discordant match may reflect incomplete
+query annotation, projection or assembly error, correspondence to a nearby
+element, or a false-positive assignment; interval overlap alone cannot distinguish
+among these possibilities. Recurrent localized-subregion matches may also reflect
+conserved sequence features that are not specific to RNA structure or function.
 
-\subsection{Embedding-based similarity and interpretability}
-Embedding representations used in \curia{} are derived from RNA foundation models
-trained on large collections of RNA sequences without explicit structural
-supervision
-\citep{chenInterpretableRNAFoundation2022,akiyamaInformativeRNABase2022,vahabAdvancingNoncodingRNA2025}.
-Prior work has shown that such models encode representations associated with RNA
-secondary structure and related functional properties, and can support downstream
-structure prediction tasks \citep{shenAccurateRNA3D2024}. In this context,
-embedding similarity was strongly sequence-associated rather than independent of
-sequence. For compact short ncRNAs, MMD was largely redundant with the tested
-sequence metrics: its incremental predictive value was small overall and absent
-after excluding miRNAs. In the tested human--mouse and human--cow island samples,
-however, embedding-SW was not fully reducible to the tested sequence-derived
-metrics and added ranking information
-beyond nucleotide identity, local sequence alignment, k-mer similarity,
-composition, and length; the analysis does not establish that this additional
-information represents conserved RNA structure or function. Empirically, match
-scores form a continuous scale separating high-confidence matches from background signal. This
-interpretation is broadly consistent with observations from protein language
-models, where representations learned from sequence alone organize according to
-structural and functional properties \citep{rivesBiologicalStructureFunction2021}.
+Finally, \curia{} does not explicitly distinguish shared evolutionary origin from
+convergent similarity in embedding space. Syntenic restriction favors loci with
+shared genomic ancestry, but embedding similarity may also arise from convergent
+structural features or recurrent local motifs. Accepted matches should therefore
+be interpreted as candidate corresponding elements supported jointly by synteny
+and embedding similarity, rather than as definitive evidence of orthology,
+structure, or function.
 
-Taken together, the sequence-baseline, recurrence, and folding analyses delimit
-what the embedding signal supports. In the tested island samples,
-synteny-constrained embedding similarity adds ranking information beyond the
-tested nucleotide metrics. The broad recurrent set is intentionally inclusive,
-whereas stricter per-species quorums define nested high-confidence subsets; no
-single embedding-SW distance cutoff is presented as biologically optimal.
-ViennaRNA agreement was heterogeneous, with moderate boundary-stable agreement
-for one MALAT1 core but weak or unstable agreement for the others. \curia{} should
-therefore be interpreted as a correspondence framework using synteny and learned
-RNA representations, not as a direct predictor of structural conservation or
-function.
+\subsection{Embedding-based similarity and its interpretation}
+
+Embedding similarity retained a strong association with primary-sequence
+similarity, but the two measures did not rank all candidate correspondences
+identically. For compact single-exon ncRNAs, MMD largely tracked the tested
+sequence-derived metrics. In contrast, localized embedding-SW matching provided
+additional ranking information in the human--mouse and human--cow analyses beyond
+nucleotide identity, local sequence alignment, k-mer similarity, nucleotide
+composition, and length.
+
+The embedding-based detector provides a second use of the learned
+representation. It distinguishes windows associated with the compact ncRNA
+classes represented in its training set from sampled genomic background and
+thereby identifies localized candidate regions for subsequent matching.
+Detector positivity is an operational property of the learned representation and
+does not by itself imply RNA structure, expression, or function.
+
+Previous work has shown that RNA foundation-model representations can encode
+secondary-structure-related and functional properties
+\citep{chenInterpretableRNAFoundation2022,
+    akiyamaInformativeRNABase2022,
+    vahabAdvancingNoncodingRNA2025,
+    shenAccurateRNA3D2024}.
+The present analyses do not determine which learned properties account for the
+additional ranking information observed in the localized-subregion workflow.
+ViennaRNA-predicted structural agreement was heterogeneous across the examined
+examples, ranging from moderate and boundary-stable agreement to consistently
+weak agreement. Embedding-supported correspondence should therefore not be
+interpreted as a direct measure of conserved secondary structure.
+
+Taken together, these results indicate that, within syntenically constrained
+loci, learned RNA representations provide a localized comparison signal that is
+not fully reproduced by the tested conventional sequence metrics. This signal may
+reflect combinations of sequence context, nucleotide composition, local motifs,
+structural propensities, and other properties learned by the model, but the
+current analysis does not assign it to any single biological mechanism.
 
 \subsection{Future directions}
-The most informative next step is biological interpretation of the recovered
-cores. Predicted elements can be prioritized for secondary-structure analysis,
-candidate interaction surfaces and binding partners, transcriptomic support, and
-targeted validation. Comparing the number, order, and divergence of cores across
-species may reveal how lncRNAs gain, lose, or rearrange functional modules and may
-identify recurrent mechanisms that are obscured at whole-transcript scale.
 
-Methodologically, combining core matches across species in a phylogenetic model
-could distinguish conserved ancestry from recurrent similarity and reduce the
-impact of a single poor assembly or chain set. Multi-scale representations may
-also connect locally detectable cores to longer-range RNA architecture.
+The immediate next step is to examine the recurrent cores in greater biological
+detail. Candidate regions can be prioritized using transcriptomic support,
+predicted secondary structure, RNA--protein interaction data, evolutionary
+constraint, and targeted experimental validation. Systematic comparison of core
+number, order, duplication, and divergence across species may reveal gain, loss,
+and rearrangement of localized ncRNA elements that are difficult to detect at
+whole-transcript scale.
 
-Smith--Waterman alignment over the token-level cosine-similarity matrix was
-selected as a natural proof-of-concept objective because it localizes ordered
-embedding similarity while allowing gaps, but it is not assumed to be optimal,
-particularly because its accumulated score depends on both alignment length and
-per-position similarity. Possible future algorithmic extensions include
-length-normalized or explicitly length-regularized local alignment, soft-DTW or
-related order-aware differentiable objectives, optimal-transport-based matching,
-and local substring matching that minimizes MMD or another distribution distance
-subject to a minimum-length constraint or a regularization term preventing
-degenerate selection of very short substrings.
+The candidate-locus stage could also be expanded beyond the current
+chain-classification procedure. More flexible projection models could combine
+whole-genome alignments with local sequence evidence, neighboring gene context,
+transcriptomic data, and multiple candidate chains. Such models may improve
+sensitivity for rapidly evolving loci, duplicated regions, and assemblies in
+which a single best chain does not adequately represent the corresponding search
+space.
+
+Localized-subregion detection is another important target for improvement. The
+current detector is trained primarily on compact annotated ncRNA classes and may
+therefore favor embedding patterns resembling those examples. Broader training
+sets, class-specific detectors, multi-scale windows, and models trained directly
+on recurrent cross-species signal could improve sensitivity to lncRNA-specific
+elements and reduce dependence on features characteristic of compact ncRNAs.
+Larger RNA foundation models, or models with independently demonstrated
+structural or functional information in their representations, may also provide
+more informative embeddings for both detection and matching.
+
+The local matcher is likewise not assumed to be optimal. Smith--Waterman
+alignment over the token-level cosine-similarity matrix provides a simple
+order-aware proof-of-concept objective, but its accumulated score depends on both
+alignment length and per-position similarity. Alternatives include
+length-normalized or length-regularized local alignment, soft-DTW and related
+order-aware objectives, optimal-transport-based matching, and local substring
+search based on MMD or other distributional distances with explicit constraints
+against degenerate short matches. Different RNA classes may ultimately require
+different detection and matching strategies.
+
+Extending the analysis from tens to hundreds of genomes would enable a more
+explicit evolutionary treatment of recurrent cores. Phylogenetic models could
+separate broadly conserved ancestry from recurrent similarity, reduce sensitivity
+to individual assemblies or chain sets, and identify lineage-specific gains,
+losses, duplications, and rearrangements. Once the correspondence framework is
+better calibrated, it could be used to ask why a candidate core is retained
+across most of a clade but absent from a particular lineage, or to identify
+elements restricted to primates, apes, or other evolutionary groups.
+These directions would shift \curia{} from a proof-of-concept correspondence
+framework toward a comparative platform for studying the evolution, organization,
+and lineage specificity of ncRNA loci.

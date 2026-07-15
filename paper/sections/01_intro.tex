@@ -16,87 +16,94 @@ detectable sequence similarity, which are often absent outside protein-coding
 contexts.
 
 In this work, we do not attempt to infer evolutionary orthology. Instead, we
-focus on identifying candidate cross-species correspondences supported by genomic
-synteny and consistency in embedding space. This formulation is best viewed as
-synteny-constrained annotation transfer, where predicted loci represent candidate
-corresponding elements rather than definitive orthologs.
+identify candidate cross-species correspondences supported by genomic synteny
+and embedding similarity, and frame the task as synteny-constrained annotation
+transfer.
 
 \subsection{The ncRNA orthology challenge}
-Establishing cross-species correspondence for ncRNAs remains substantially more
-difficult. Sequence conservation is often weak or absent across evolutionary
-distances
-\citep{ulitskyLincRNAsGenomicsEvolution2013,diederichsFourDimensionsNoncoding2014,hezroniPrinciplesLongNoncoding2015,rivasEvolutionaryConservationRNA2021,ulitskyEvolutionRescueUsing2016,statelloGeneRegulationLong2021},
-and transcript boundaries are frequently ambiguous, making it unclear what
-constitutes a conserved unit
-\citep{ulitskyLincRNAsGenomicsEvolution2013,diederichsFourDimensionsNoncoding2014,hezroniPrinciplesLongNoncoding2015,mattickLongNoncodingRNAs2023}.
-Functional constraints are not reliably captured by primary sequence alone,
-limiting the applicability of sequence-based approaches
-\citep{rivasEvolutionaryConservationRNA2021}. In addition, ncRNA annotations are
-incomplete and heterogeneous across species
-\citep{mattickLongNoncodingRNAs2023,perteaCHESSNewHuman2018}, complicating both
-evaluation and transfer. Finally, embedding representations of short ncRNAs can be
-context-dependent \citep{chenInterpretableRNAFoundation2022}, making direct
-comparison sensitive to boundary definition.
+Cross-species correspondence is difficult to establish for ncRNAs because the
+relevant conserved unit is often unclear. For many ncRNAs, evolutionary
+conservation is less readily captured by primary-sequence identity than for
+protein-coding genes: related RNAs may retain similar molecular functions,
+structural features, or localized conserved elements despite substantial
+sequence divergence
+\citep{ulitskyLincRNAsGenomicsEvolution2013,
+  diederichsFourDimensionsNoncoding2014,
+  hezroniPrinciplesLongNoncoding2015,
+  rivasEvolutionaryConservationRNA2021,
+  ulitskyEvolutionRescueUsing2016,
+  statelloGeneRegulationLong2021}.
+Conservation may also be restricted to short motifs or local domains rather than
+extending across the complete transcript. At the same time, transcript
+boundaries and isoform structures are frequently ambiguous, and ncRNA
+annotations remain incomplete and heterogeneous across species
+\citep{mattickLongNoncodingRNAs2023,perteaCHESSNewHuman2018}.
+Together, these properties complicate both annotation transfer and its
+evaluation.
 
-This ambiguity is especially acute for lncRNAs. Their annotated loci can span
-tens of kilobases, often with localized candidate domains separated by long
-intervening sequence. Whole-locus comparison can
-therefore dilute the detectable signal, and the locus may exceed the sequence
-length supported by current RNA foundation models. This motivates searching for
-localized candidate cores rather than requiring end-to-end transcript
-correspondence.
-
-For example, two ncRNA loci may exhibit low primary sequence similarity while
-preserving a similar structural pattern:
-\begin{verbatim}
-GAGGUAUCCAAGAUACCUC
-(((((((.....)))))))
-AUGCUACGAUCGGUAGCAU
-(((((((.....)))))))
-\end{verbatim}
-In such cases, sequence-based comparison may fail to establish correspondence,
-whereas embedding-based representations may capture similarities associated with
-shared structural patterns.
+These problems are especially acute for lncRNAs. Annotated loci may span tens of
+kilobases and contain localized candidate domains separated by long intervening
+sequence. Whole-locus comparison can therefore dilute localized correspondence,
+and complete loci may exceed the input length supported by current RNA
+foundation models. This motivates searching for candidate conserved subregions
+rather than requiring end-to-end transcript correspondence.
 
 \subsection{Limitations of existing approaches}
-Existing approaches solve related but distinct problems. Covariance models (e.g., Infernal
-\citep{nawrockiInfernal11100fold2013}/Rfam \citep{ontiveros-palaciosRfam15RNA2025})
-offer high specificity but rely on curated families and do not generalize to
-genome-wide discovery. Structure-based alignment methods such as LocARNA
-\citep{willLocARNA20Versatile2024} and RNAforester
-\citep{hochsmannLocalSimilarityRNA2003} capture explicit sequence--structure
-similarity between supplied RNAs. \curia{} instead starts from genomes, a
-reference annotation, and alignment chains, and localizes candidate corresponding
-elements without requiring a pre-specified family model or structure. Genome-wide
-methods such as RNAz \citep{gruberRNAz20Improved2010}, EvoFold
-\citep{pedersenIdentificationClassificationConserved2006}, and FEELnc
-\citep{wucherFEELncToolLong2017} identify candidate RNA elements or lncRNA loci,
-but focus on detection or annotation rather than establishing cross-species
-correspondence. Comparative genome alignments define candidate homologous
-intervals but do not provide an RNA-specific measure of similarity or a principled
-way to localize relevant embedding-supported signal
-\citep{zoonomiaconsortiumComparativeGenomicsMultitool2020,armstrongProgressiveCactusMultiplegenome2020}.
-The distinguishing objective here is annotation transfer with localized
-RNA-specific evidence: first identify the relevant syntenic locus, then find and
-compare subregions with embedding patterns characteristic of annotated compact
-ncRNAs enriched for structured RNA classes.
+
+Existing methods address several related tasks, but none directly combines
+reference-guided annotation transfer with localization and comparison of
+candidate ncRNA subregions within syntenic genomic loci.
+
+Covariance-model approaches implemented in Infernal and distributed through
+Rfam can sensitively identify members of established RNA families
+\citep{nawrockiInfernal11100fold2013,
+  ontiveros-palaciosRfam15RNA2025}. Their application, however, depends on a
+predefined family alignment and consensus sequence--structure model. They are
+therefore well suited to annotating known RNA families, but less applicable to
+reference loci for which no curated family model exists.
+
+Structure-aware alignment methods such as LocARNA and RNAforester compare
+supplied RNA sequences using explicit sequence--structure models
+\citep{willLocARNA20Versatile2024,hochsmannLocalSimilarityRNA2003}. These methods
+address the comparison of already defined RNA intervals, rather than locating a
+corresponding element within a genome-scale syntenic search region.
+
+Comparative screening methods such as RNAz and EvoFold identify genomic regions
+with evidence of evolutionarily conserved RNA secondary structure in multiple
+sequence alignments
+\citep{gruberRNAz20Improved2010,pedersenIdentificationClassificationConserved2006}. Their objective is de novo
+discovery of candidate structured RNA elements, rather than transfer of a
+specific reference annotation to a query genome. They also depend on detectable
+comparative sequence and structural signals within the input alignment.
+
+CURIA addresses a different task. Starting from a reference ncRNA annotation and
+pairwise genome alignment chains, it first restricts the search to candidate
+syntenic loci and then localizes and ranks corresponding subregions using learned
+RNA representations. This formulation does not require a pre-existing RNA family
+model, a supplied query transcript, or end-to-end conservation of the annotated
+reference locus.
 
 \subsection{Synteny-constrained embedding matching}
-An underexplored component is the use of pretrained RNA-language-model
+
+An underexplored strategy is to use pretrained RNA-language-model
 representations as a localized similarity signal within syntenically constrained
-genomic search regions. Genome alignment chains already identify regions that share
-genomic context and therefore indicate where a corresponding ncRNA should be sought
-\citep{zoonomiaconsortiumComparativeGenomicsMultitool2020,armstrongProgressiveCactusMultiplegenome2020}.
-At the same time, RNA foundation models such as RNA-FM
+genomic search regions. Genome alignment chains provide candidate regions that
+preserve genomic context and therefore indicate where a corresponding ncRNA may
+be sought
+\citep{zoonomiaconsortiumComparativeGenomicsMultitool2020,
+  armstrongProgressiveCactusMultiplegenome2020}.
+RNA foundation models such as RNA-FM
 \citep{chenInterpretableRNAFoundation2022}, RiNALMo
-\citep{penicRiNALMoGeneralpurposeRNA2025}, and related embedding approaches such as
-RNABERT \citep{akiyamaInformativeRNABase2022} provide learned representations
-associated with RNA family identity, secondary-structure-related properties, and downstream
-predictive tasks \citep{vahabAdvancingNoncodingRNA2025}. Applying these models as
-an unconstrained genome-wide scanner would be impractical; using chain-defined
-regions makes local RNA-specific comparison tractable. Combining these sources of information
-enables tractable comparison of ncRNA loci in settings where primary-sequence
-conservation is limited.
+\citep{penicRiNALMoGeneralpurposeRNA2025}, and related approaches such as RNABERT
+\citep{akiyamaInformativeRNABase2022} provide learned representations associated
+with RNA family identity, secondary-structure-related properties, and downstream
+predictive tasks
+\citep{vahabAdvancingNoncodingRNA2025}.
+Applying these models as unconstrained genome-wide scanners would be
+computationally impractical, whereas restricting comparison to chain-defined
+candidate loci makes localized RNA-specific matching feasible. This combination
+supports comparison of ncRNA loci in settings where primary-sequence conservation
+is weak or heterogeneous.
 
 \begin{figure}[t]
   \centering
@@ -133,39 +140,39 @@ conservation is limited.
 \end{figure}
 
 \subsection{Method overview}
-We formulate cross-species ncRNA correspondence as matching of
-embedding-supported regions constrained by genome alignment chains. Candidate loci
-are first identified using a TOGA-inspired projection that leverages alignment
-coverage in intronic and flanking sequence to provide locus-level syntenic
-context that is partly independent of conservation within the ncRNA itself
-\citep{kirilenkoIntegratingGeneAnnotation2023,sharmaIncreasedAlignmentSensitivity2017}.
 
-Within these candidate regions, \curia{} evaluates similarity in embedding space
-rather than relying on primary-sequence alignment. The pipeline treats the short
-and island branches with complementary similarity measures. For short ncRNAs, each region
-is represented as a set of per-position embedding vectors and similarity is
-quantified using Maximum Mean Discrepancy (MMD)
-\citep{grettonKernelTwoSampleTest2012}, a distribution-level measure over
-embeddings; low MMD indicates similar embedding distributions. In the island branch,
-localized detector-positive subregions are matched by token-level local alignment using
-Smith--Waterman alignment \citep{smithIdentificationCommonMolecular1981} over the
-per-token cosine similarity dotplot. Both formulations avoid explicit
-primary-sequence alignment and provide continuous scores for ranking candidate
-matches, making them suitable for ncRNAs where primary-sequence conservation is
-weak.
+We formulate cross-species ncRNA correspondence as the matching of
+embedding-supported regions within loci defined by genome alignment chains.
+Candidate loci are first identified using a chain-based projection adapted from
+principles used in TOGA. The projection uses alignment coverage across exonic,
+intronic, and flanking sequence to provide locus-level syntenic context that is
+not determined solely by conservation within the ncRNA itself
+\citep{kirilenkoIntegratingGeneAnnotation2023,
+  sharmaIncreasedAlignmentSensitivity2017}.
+
+Within each candidate locus, \curia{} compares RNA-language-model
+representations using one of two geometry-dependent branches. Compact,
+single-exon ncRNAs are compared as complete regions using Maximum Mean
+Discrepancy (MMD)
+\citep{grettonKernelTwoSampleTest2012}, which measures the difference between
+the distributions of their per-position embedding vectors. Longer or
+multi-exon loci are processed by a localized-subregion workflow, in which
+detector-positive subregions are matched by Smith--Waterman local alignment
+\citep{smithIdentificationCommonMolecular1981} over a per-token cosine-similarity
+matrix. Both branches provide continuous scores for ranking candidate
+correspondences without requiring nucleotide sequence alignment.
 
 \subsection{Contributions}
 In this work, we:
 \begin{enumerate}
-  \item Reformulate cross-species ncRNA correspondence as synteny-constrained
-        matching in embedding space.
-  \item Introduce \curia{}, a pipeline combining chain-based locus projection with
-        embedding-based detection and comparison of localized signal.
-  \item Introduce an island-based representation for geometry-defined island-branch loci that separates
-        detectable candidate cores from intervening sequence not required to align.
-  \item Develop a boundary refinement strategy for short ncRNAs.
-  \item Demonstrate a genome-scale proof of concept across multiple mammalian
-        genomes, showing that this approach can recover cross-species ncRNA
-        correspondence in cases where primary-sequence similarity alone is
-        limited.
+  \item Formulate cross-species ncRNA annotation as synteny-constrained matching
+  in RNA embedding space.
+  \item Introduce \curia{}, a pipeline that combines chain-based locus projection
+  with localized embedding-based comparison.
+  \item Develop complementary strategies for compact and extended ncRNA loci,
+  including boundary refinement for short ncRNAs and localized subregion
+  matching for longer or multi-exon loci.
+  \item Demonstrate the approach at genome scale across 19 mammalian genomes and
+  identify recurrent candidate correspondences that are not fully explained
+  by conventional sequence-similarity measures.
 \end{enumerate}

@@ -1,31 +1,23 @@
 \begin{abstract}
-Reference-based annotation transfer via orthology has been highly successful for
-protein-coding genes but remains challenging for non-coding RNAs (ncRNAs) due to
-weak sequence conservation, ambiguous transcript boundaries, and incomplete
-annotations. Here we present \curia{}, a pipeline for cross-species ncRNA
-annotation that combines genome alignment chains with embedding-based
-representations derived from the RiNALMo RNA foundation model. \curia{} formulates
-cross-species ncRNA correspondence as synteny-constrained matching in embedding
-space. It first identifies candidate loci using a simplified TOGA-based
-projection, then detects localized regions whose embedding patterns resemble
-those of annotated compact ncRNAs enriched for structured RNA classes
-(``islands''), and finally establishes cross-species correspondence by
-local alignment in embedding space. We applied \curia{} to 19 human-to-query
-genome pairs. In the detailed human-to-mouse annotation comparison,
-52.4\% of predicted short-ncRNA loci overlapped an annotated exon (any overlap).
-For compact short ncRNAs, embedding similarity was largely redundant with the
-tested conventional sequence metrics, whereas localized embedding-SW matching of
-island regions provided additional ranking information beyond nucleotide
-alignment, identity, k-mer similarity, composition, and length in the tested
-human--mouse and human--cow samples.
-From 34{,}846 annotated human lncRNA loci, a multi-species screen identified a
-broad recurrent set of 1{,}693 annotated human lncRNA loci with an
-embedding-supported region in at least
-17 of 19 query genomes; 170 loci remained when every counted species was
-additionally required to satisfy $d\leq0.02$. These
-results suggest that combining synteny with embedding-based similarity can
-complement conventional sequence conservation for cross-species ncRNA annotation
-in settings characterized by weak or heterogeneous primary-sequence conservation,
-establishing a proof of concept for integrating comparative genomics with RNA
-foundation-model embeddings for genome-scale ncRNA analysis.
+Reference-based annotation transfer has been highly successful for
+protein-coding genes but remains difficult for non-coding RNAs (ncRNAs), which
+often show weak sequence conservation, ambiguous transcript boundaries, and
+incomplete cross-species annotation. Here we present \curia{}, a pipeline for
+cross-species ncRNA annotation that combines genome alignment chains with
+representations from the RiNALMo RNA foundation model. \curia{} constrains
+candidate loci using a chain-based projection inspired by TOGA and then
+identifies and matches localized embedding-supported regions within the
+projected loci.
+We applied \curia{} to 19 human-to-query genome pairs. In a detailed
+human--mouse comparison, 52.4\% of predicted short-ncRNA loci overlapped an
+annotated exon. For compact short ncRNAs, embedding similarity added little
+beyond conventional sequence metrics, whereas localized island matching
+provided complementary ranking information in human--mouse and human--cow
+comparisons. A multi-species screen further identified 1{,}693 human lncRNA
+loci containing recurrent embedding-supported regions in at least 17 of 19
+query genomes, including a more stringent subset of 170 loci.
+These results establish a proof of concept for synteny-constrained,
+embedding-based ncRNA annotation and suggest that localized RNA embeddings can
+complement conventional sequence conservation when prioritizing candidate
+cross-species correspondences.
 \end{abstract}

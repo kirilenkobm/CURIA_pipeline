@@ -11,62 +11,68 @@
 % =====================================================================
 
 \subsection{Pipeline overview}
+
 \curia{} is a computational pipeline for genome-scale cross-species ncRNA
 correspondence that combines chain-guided locus prediction with embedding-based
 comparison (Figure~\ref{fig:pipeline}). Given a reference genome with ncRNA
-annotations and one or more query genomes linked by genome alignment chains,
-\curia{} produces: (i) predicted corresponding loci and (ii) an embedding-based
-similarity score for short ncRNAs; for island-branch loci it instead reports (iii)
-matched localized subregions
-(``islands'').
+annotations, a query genome, and pairwise genome alignment chains, \curia{}
+produces refined query loci for compact single-exon ncRNAs and scored
+reference--query subregion correspondences for longer or multi-exon loci.
 
-The pipeline follows a branching architecture after an initial projection step,
-handling short and island-branch loci separately. Short ncRNAs yield a single refined
-locus, whereas island-branch loci yield a set of island-level alignments. The pipeline
-consists of seven stages:
+The pipeline consists of seven stages:
 \begin{enumerate}
-  \item \textbf{Preprocessing.} Isoforms of the same gene/locus and strand are
-        merged into a \emph{union exon model} (their exonic intervals unioned in
-        genomic order).
-  \item \textbf{Candidate region prediction.} Genome alignment chains are used to
-        identify candidate query regions via a simplified TOGA-inspired classifier
-        (Section~\ref{sec:candidate}).
-  \item \textbf{Reference island detection (island branch).} Localized subregions (``islands'')
-        are detected within transcripts (Section~\ref{sec:refisland}).
-  \item \textbf{Chain-guided island projection (island branch).} Reference islands are projected to the
-        query genome to define targeted search regions
-        (Section~\ref{sec:projisland}).
-  \item \textbf{Query island detection (island branch).} Candidate islands are identified in
-        projected regions (Section~\ref{sec:queryisland}).
-  \item \textbf{Island alignment (island branch).} Reference and query islands are matched by
-        embedding-based alignment (Section~\ref{sec:islandalign}).
-  \item \textbf{Short ncRNA refinement (short branch).} Whole candidate loci are
-        refined by embedding-based local boundary search
-        (Section~\ref{sec:short}), without island decomposition.
+    \item \textbf{Preprocessing.} Isoforms assigned to the same locus and strand are
+    merged into a \emph{union exon model} by taking the union of their exonic
+    intervals in genomic order.
+
+    \item \textbf{Candidate region prediction.} Genome alignment chains are used to
+    identify candidate query regions with a chain-based classifier adapted from
+    principles used in TOGA
+    (Section~\ref{sec:candidate}).
+
+    \item \textbf{Short ncRNA refinement.} For compact single-exon ncRNAs, the
+    projected candidate locus is refined by an embedding-based local boundary
+    search, without decomposition into subregions
+    (Section~\ref{sec:short}).
+
+    \item \textbf{Reference subregion detection.} For longer or multi-exon loci,
+    localized embedding-supported subregions (``islands'') are identified in the
+    reference locus
+    (Section~\ref{sec:refisland}).
+
+    \item \textbf{Chain-guided subregion projection.} Each reference island is
+    projected through the genome alignment chain to define a corresponding search
+    region in the query genome
+    (Section~\ref{sec:projisland}).
+
+    \item \textbf{Query subregion detection.} Candidate query islands are identified
+    within the projected search regions associated with the reference islands
+    (Section~\ref{sec:queryisland}).
+
+    \item \textbf{Reference--query subregion matching.} Reference and query islands
+    are compared by embedding-based local matching, producing scored
+    reference--query subregion correspondences
+    (Section~\ref{sec:islandalign}).
 \end{enumerate}
-Outputs include candidate region assignments, refined short ncRNA loci, and
-island-level alignments.
 
-\textbf{Branch routing.} Assignment to the short or the island branch is based on
-transcript geometry rather than annotation biotype. A locus is routed to the
-short-ncRNA branch when its union exon model (defined above) is
-single-exon and $\leq 256$\,nt; all other loci are routed to the island branch.
-Within the island branch, single-exon loci $\leq 320$\,nt are treated as a single
-whole-exon island (compact-RNA handling; Section~\ref{sec:refisland}), whereas
-longer or multi-exon loci are decomposed into islands by the detector. Concretely:
-single-exon $\leq 256$\,nt $\rightarrow$ short branch; single-exon $257$--$320$\,nt
-$\rightarrow$ island branch as one whole-exon island; single-exon $>320$\,nt and
-all multi-exon loci $\rightarrow$ island branch with island detection. Routing is a
-partition---no locus is processed by more than one branch. Consequently some loci
-annotated as lncRNA that are short and single-exonic are evaluated in the
-short-ncRNA benchmark, while some non-lncRNA classes that are multi-exonic are
-processed through the island branch.
+\textbf{Branch routing.} Loci are assigned to processing branches according to
+the geometry of their union exon models rather than their annotation biotypes,
+because biotype labels do not reliably determine whether a locus is best treated
+as a compact complete region or as a set of localized subregions. Some annotated
+lncRNAs are short and single-exonic, whereas some compact ncRNA classes are
+multi-exonic.
 
-The union exon model is an exploratory locus-level representation for signal
-discovery, not a reconstruction of a naturally occurring mature transcript: as it
-unions exons across isoforms of a locus, mutually exclusive isoforms may be
-combined. It is used only to define where to search for candidate localized
-signal, and no biological claim is attached to the merged model itself.
+Single-exon loci of length $\leq 256$\,nt are processed as complete loci.
+Single-exon loci of length $257$--$320$\,nt are represented as a single
+whole-exon island. Single-exon loci longer than $320$\,nt and all multi-exon loci
+are scanned for detector-positive islands
+(Section~\ref{sec:refisland}). These categories form a partition, and each locus
+is processed exactly once.
+
+The union exon model is a locus-level search representation rather than a
+reconstructed mature transcript. Because exons are unioned across isoforms, the
+model may combine segments that do not coexist in any single transcript. It is
+used only to define the search space for localized signal.
 
 \begin{figure}[t]
   \centering
@@ -85,303 +91,393 @@ signal, and no biological claim is attached to the merged model itself.
 \subsection{Input data}
 \curia{} requires three types of input data:
 \begin{enumerate}
-  \item \textbf{Reference genome and annotation.} The reference genome is provided
-        in 2bit format, with ncRNA annotations in BED12 format including
-        \texttt{transcript\_id}, \texttt{gene\_id}, and \texttt{biotype}.
-        Protein-coding transcripts are used during candidate region prediction to
-        compute synteny-related features, but are excluded from downstream
-        analysis.
-  \item \textbf{Query genomes.} Query genomes are provided in 2bit format.
-        Query-side annotations are not required for prediction but may be used for
-        evaluation.
-  \item \textbf{Genome alignment chains.} Pairwise genome alignment chains (UCSC
-        chain format) define syntenic relationships between reference and query
-        genomes. Low-scoring chains are filtered during loading.
+    \item \textbf{Reference genome and annotation.} The reference genome is provided
+    in 2bit format, with ncRNA annotations in BED12 format including
+    \texttt{transcript\_id}, \texttt{gene\_id}, and \texttt{biotype}.
+    Protein-coding transcripts are used during candidate-region prediction to
+    compute synteny-related features but are excluded from downstream ncRNA
+    analysis.
+    \item \textbf{Query genome.} The query genome is provided in 2bit format.
+    Query-side annotations are not required for prediction but may be used
+    for evaluation.
+    \item \textbf{Genome alignment chains.} Pairwise reference--query genome
+    alignments are provided in UCSC chain format and define the search space
+    used for locus projection. Low-scoring chains are filtered during loading.
 \end{enumerate}
 
 \subsection{Candidate region prediction}
 \label{sec:candidate}
-\textbf{Input.} Union transcripts and genome alignment chains.
 
-\textbf{Operation.} \curia{} uses a simplified TOGA-inspired chain-guided
-projection step \citep{kirilenkoIntegratingGeneAnnotation2023} to define coarse
-candidate regions for ncRNA loci rather than full transcript reconstructions
-(Figure~\ref{fig:pipeline}A). For each chain--transcript pair, a small set of
-seven chain- and exon-structure features is computed: log-transformed synteny
-gene count (\texttt{synteny\_log1p}), global exonic occupancy
-(\texttt{gl\_exo}), $\pm10$\,kb flank coverage (\texttt{flank\_cov}),
-exonic-length to query-span ratio (\texttt{exlen\_to\_qlen}), exonic fraction
-(\texttt{exon\_perc}), exon count (\texttt{ex\_num}), and a single-exon
-indicator (\texttt{single\_exon}).
+\textbf{Input.} Union exon models and genome alignment chains.
 
-A gradient-boosted decision-tree classifier assigns a correspondence probability
-from these features, trained on labeled chain--transcript pairs from human--mouse
-projections. Pairs with predicted probability above 0.5 are retained, except that
-the deployed model uses 0.3 for loci annotated as lncRNA to favor candidate-region
-recall. Because it uses only chain- and
-exon-structure features, this step is independent of the choice of RNA embedding
-model. Optionally, for deeply diverged query genomes where the orthology
-classifier is over-conservative, the search space can instead be seeded from the
-top-scoring alignment chain per transcript regardless of the orthology call.
+\textbf{Operation.} \curia{} uses a chain-based locus-projection procedure
+adapted from the orthology-classification framework used in TOGA
+\citep{kirilenkoIntegratingGeneAnnotation2023} to define coarse candidate regions
+in the query genome rather than reconstruct complete transcripts
+(Figure~\ref{fig:pipeline}A).
 
-For each retained pair, candidate query intervals were obtained by projecting the
-transcript through the corresponding alignment chain. Intervals were defined as
-the span of chain blocks overlapping the transcript, including flanking regions to
-account for alignment imprecision. When multiple chains satisfied the threshold
-for a given transcript, all corresponding intervals were retained.
+For each chain--locus pair, seven features describing chain coverage and reference
+exon geometry are computed: log-transformed synteny gene count
+(\texttt{synteny\_log1p}), global exonic occupancy
+(\texttt{gl\_exo}), $\pm10$\,kb flank coverage
+(\texttt{flank\_cov}), exonic-length-to-query-span ratio
+(\texttt{exlen\_to\_qlen}), exonic fraction
+(\texttt{exon\_perc}), exon count
+(\texttt{ex\_num}), and a single-exon indicator
+(\texttt{single\_exon}).
 
-\textbf{Output.} Projected candidate query regions with associated metadata.
+A gradient-boosted decision-tree classifier, trained on labeled human--mouse
+chain--transcript pairs, assigns a correspondence probability to each pair.
+Pairs with predicted probability at least 0.5 are retained. For loci annotated
+as lncRNA, a relaxed threshold of 0.3 is used to favor candidate-region recall.
+These biotype-dependent thresholds are applied before the subsequent
+geometry-based branch routing.
 
-\textbf{Rationale.} Only coarse locus-level projections are required to constrain
-downstream analysis, avoiding assumptions related to coding sequence structure and
-transcript reconstruction.
+For query genomes in which the classifier is overly conservative, candidate
+regions may instead be seeded from the highest-scoring alignment chain for each
+reference locus, irrespective of the classifier call.
+
+For each retained chain--locus pair, the reference locus is projected through
+the corresponding alignment chain. The candidate query interval is defined by
+the span of chain blocks overlapping the reference locus and is extended by
+flanking sequence to accommodate local projection uncertainty. If multiple chains
+pass the selection criterion for the same reference locus, all corresponding
+candidate intervals are retained.
+
+\textbf{Output.} Projected candidate query regions with their associated
+reference loci, chains, and classifier metadata.
+
+\textbf{Rationale.} Downstream embedding-based comparison requires only a coarse
+locus-level search space. This avoids imposing coding-sequence constraints or
+attempting to reconstruct complete query transcripts.
 
 \subsubsection{Classifier training and evaluation partitioning}
 \label{sec:classifier-training}
-Chain--transcript pairs are labeled by the orthology procedure the step adapts
-\citep{kirilenkoIntegratingGeneAnnotation2023}: pairs classified as orthologous
-(ORTH) form the positive class and pairs classified as paralogous (PARA) the
-negative class; other categories are excluded from training. Each of the seven
-features is derived only from chain geometry and reference-side exon structure
-(synteny coverage, gene-level exonic overlap, flank coverage, exon-to-query length
-ratio, exon fraction, exon count, and a single-exon flag); no RNA foundation-model
-embedding and no query-species ncRNA annotation enter the labeling or the features.
+
+Chain--transcript pairs are labeled using the TOGA orthology-classification
+procedure on which this step is based
+\citep{kirilenkoIntegratingGeneAnnotation2023}. Pairs assigned to the ORTH
+category form the positive class, whereas pairs assigned to the PARA category
+form the negative class; all other categories are excluded from training. These
+labels are used only to train the chain-based candidate-region classifier and
+should not be interpreted as ncRNA orthology assignments produced by \curia{}.
+
+The seven classifier features describe chain geometry and reference-side exon
+structure: synteny coverage, gene-level exonic overlap, flank coverage,
+exon-to-query-length ratio, exon fraction, exon count, and a single-exon
+indicator. Neither RNA embeddings nor query-side ncRNA annotations are used.
+
 A gradient-boosted decision-tree classifier is trained on a balanced sample of up
-to 20{,}000 pairs per class with a random 75/25 stratified train/test split
-(fixed seed), and generalization is summarized by five-fold stratified
-cross-validated AUC. The split is stratified by label but \emph{not} grouped by
-transcript, gene, locus, chromosome, or family, so paralogous or neighboring loci
-can in principle fall on both sides of the split; the reported classifier AUC
-should therefore be read as an estimate of ORTH-versus-PARA feature separability
-rather than a strict held-out-locus generalization bound. Crucially, because the
-features are embedding-independent and the classifier only gates the candidate
-search space, it is independent of the embedding-based matching that the
-downstream annotation-agreement analysis evaluates; that evaluation compares
-predicted loci to query annotations the classifier never sees, so classifier
-training does not directly confound it.
+to 20{,}000 pairs per class. Model development uses a fixed random 75/25
+stratified train/test split, and performance is summarized by five-fold
+stratified cross-validated AUC. Splits are stratified by class label but are not
+grouped by transcript, gene, locus, chromosome, or family. Related or neighboring
+loci may therefore occur in different folds, and the reported AUC should be
+interpreted as a measure of ORTH--PARA feature separability rather than as a
+strict held-out-locus generalization estimate.
+
+The classifier is used only to define the candidate search space; downstream
+embedding-based matching and annotation-based evaluation are performed
+independently of its training labels.
 
 \subsection{RNA embeddings}
 \label{sec:embeddings}
+
 Sequences are represented by per-nucleotide embeddings from the RiNALMo
 general-purpose RNA foundation model
 (\texttt{giga-v1}; 650M parameters, 1280-dimensional per-token embeddings)
 \citep{penicRiNALMoGeneralpurposeRNA2025}.
 
-Two task-specific linear projections are stored as pipeline artifacts: a
-$k{=}16$ PCA used for position-level matching (fit on 10{,}368 per-token
-embeddings), and a $k{=}64$ PCA used for island finding (fit on the 18{,}827
-mean-pooled training windows described below). Per-model parameters (PCA files,
-signal/noise classifier, scan and match thresholds, embedding strategy) are
-recorded in a model registry and selected automatically.
+Two task-specific linear projections are used. A $k{=}16$ PCA, fitted on
+10{,}368 per-token embeddings, is applied for position-level matching. A
+$k{=}64$ PCA, fitted on the 18{,}827 mean-pooled training windows described
+below, is applied for localized subregion detection.
+
+The corresponding PCA transformations, the compact-ncRNA-versus-background
+detector, scan and match thresholds, and embedding settings are stored as
+versioned pipeline artifacts and selected through a model registry.
 
 \subsection{Short ncRNA pipeline}
 \label{sec:short}
-Short ncRNAs (e.g., miRNAs, tRNAs, snoRNAs, snRNAs) typically occupy compact loci,
-allowing direct local comparison without island-based decomposition
-(Figure~\ref{fig:pipeline}C). This branch processes single-exon ncRNAs up to
-256\,nt. For each locus, the reference sequence is embedded and the corresponding
-query region is extended symmetrically toward a search span 1.1 times the
-reference length when additional sequence is needed.
-Candidate windows matching the reference length are tiled across the query region
-and compared to the reference using MMD (Section~\ref{sec:mmd}). The best match is
-then refined by local boundary perturbation ($\pm 5$\,nt), constrained to a
-length within $0.8$--$1.2\times$ the reference length. Embeddings are projected
-from 1280 to 16 dimensions using the matching PCA prior to comparison.
+
+Compact single-exon ncRNA loci can be compared directly without decomposition
+into localized subregions (Figure~\ref{fig:pipeline}C). This branch processes all
+single-exon loci of length up to 256\,nt, irrespective of annotation biotype;
+typical examples include miRNAs, tRNAs, snoRNAs, and snRNAs, although short
+single-exon loci annotated as lncRNA may also enter this branch.
+
+For each locus, the reference sequence is embedded, and the corresponding query
+region is symmetrically extended, when necessary, to provide a search span of
+1.1 times the reference length. Candidate windows matching the reference length
+are tiled across the query region and compared with the reference using MMD
+(Section~\ref{sec:mmd}). The best-scoring window is then refined by local boundary
+perturbation of up to $\pm 5$\,nt, subject to a final length constraint of
+$0.8$--$1.2\times$ the reference length. Before comparison, embeddings are
+projected from 1280 to 16 dimensions using the matching PCA.
 
 \textbf{Output.} Refined query coordinates with an MMD-based similarity score.
 
 \subsection{Similarity in embedding space (MMD)}
 \label{sec:mmd}
+
 For short ncRNAs, window similarity is quantified using Maximum Mean Discrepancy
 (MMD) \citep{grettonKernelTwoSampleTest2012} with an RBF kernel, treating
 per-position embeddings as empirical distributions:
 \begin{equation}
-  \widehat{\mathrm{MMD}}_u^2(X, Y) = \frac{1}{n(n-1)}\sum_{i \neq j} k(x_i, x_j)
+    \widehat{\mathrm{MMD}}_u^2(X, Y) =
+    \frac{1}{n(n-1)}\sum_{i \neq j} k(x_i, x_j)
     + \frac{1}{m(m-1)}\sum_{i \neq j} k(y_i, y_j)
     - \frac{2}{nm}\sum_{i,j} k(x_i, y_j),
 \end{equation}
-i.e.\ the unbiased empirical estimator (self-terms $i=j$ excluded from the
-within-sample sums), where $k(x, y) = \exp(-\gamma \lVert x - y \rVert^2)$ and
-$X = \{x_1, \dots, x_n\}$, $Y = \{y_1, \dots, y_m\}$ denote the sets of
-per-position embedding vectors for two sequence windows. The implementation
-reports $\sqrt{\max(\widehat{\mathrm{MMD}}_u^2,0)}$, because the unbiased finite-sample
-estimate can be negative. Thus a reported value of zero includes estimates clipped
-at zero and does not uniquely imply numerically identical empirical distributions. Low MMD indicates similar
-embedding distributions; higher values correspond to dissimilar or background
-signal.
+where $k(x, y) = \exp(-\gamma \lVert x - y \rVert^2)$ and
+$X = \{x_1, \dots, x_n\}$ and $Y = \{y_1, \dots, y_m\}$ are the sets of
+per-position embedding vectors for the two sequence windows. This is the
+unbiased empirical estimator, with self-terms excluded from the within-sample
+sums.
 
-The kernel bandwidth $\gamma$ is set by the median pairwise-distance heuristic
-computed on the reference locus's own per-position embeddings and then held fixed
-for all query-window comparisons at that locus. Consequently $\gamma$ is chosen
-per reference locus rather than globally. The score is directly comparable for
-ranking windows \emph{within} a locus, but
-intermediate absolute values (e.g.\ $0.05$ vs $0.1$) are not guaranteed to be on a
-single globally calibrated scale across loci or biotypes. Cross-locus comparisons
-and global thresholds are therefore interpreted as approximate rather than exact.
+The implementation reports
+$\sqrt{\max(\widehat{\mathrm{MMD}}_u^2, 0)}$, because the unbiased finite-sample
+estimate may be negative. A reported value of zero may therefore result from
+clipping and does not necessarily indicate identical empirical distributions.
+Lower MMD values indicate more similar embedding distributions.
+
+The kernel bandwidth $\gamma$ is determined separately for each reference locus
+using the median pairwise-distance heuristic on its per-position embeddings and
+is then held fixed for all query-window comparisons at that locus. The resulting
+scores are suitable for ranking candidate windows within a locus, but are not
+globally calibrated across loci or biotypes. Cross-locus comparisons and global
+thresholds should therefore be interpreted approximately.
 
 \subsection{Reference island detection}
 \label{sec:refisland}
-To detect localized embedding patterns resembling annotated compact ncRNAs
-enriched for structured RNA classes, we trained a logistic regression classifier on
-fixed-length sequence windows represented in RiNALMo embedding space. Positive
-examples consisted of windows from annotated miRNAs, snoRNAs, snRNAs, scaRNAs,
-and misc\_RNAs (lncRNAs were excluded), labeled positive when a window covered $\geq 20$\,nt
-of an annotated element; negative examples consisted of intergenic, non-exonic
-genomic windows. Windows were embedded with RiNALMo, mean-pooled across positions,
-and projected from 1280 to 64 dimensions using the finding PCA prior to training.
-Training loci were balanced across biotypes (up to 150 loci per biotype, with an
-additional 71 held-out loci per biotype for calibration). The committed training
-cache contains 18{,}827 windows: 6{,}538 positive and 12{,}289 negative. On 5-fold
-cross-validation the classifier achieved ROC-AUC $\approx 0.79$; at a calibrated
-background false-positive budget of $\leq 20\%$, it detected $\approx 78\%$ of
-signal windows ($\geq 40$\,nt overlap).
 
-The resulting model distinguishes embedding patterns associated with the
-annotated compact ncRNAs in its positive set from genomic background.
-We call contiguous detector-positive regions ``islands.'' This is an operational
-embedding-based definition, not evidence that every island forms a stable
-structure or has a biological function, and the model is not a general ncRNA
-annotation classifier.
+To identify localized embedding patterns associated with annotated compact
+ncRNAs, we trained a logistic regression classifier on fixed-length genomic
+sequence windows represented in RiNALMo embedding space. Positive loci were
+sampled from annotated miRNAs, snoRNAs, snRNAs, scaRNAs, and
+\texttt{misc\_RNAs}; lncRNAs were excluded from detector training.
 
-Each reference union transcript is scanned using a sliding window (128\,nt, stride
-40\,nt). Windows are embedded, mean-pooled, projected to the finding PCA space,
-and scored by the classifier. The resulting probability trace is smoothed using a
-moving-average filter (window size $= 5$), and contiguous regions exceeding a
-fixed probability threshold ($0.5$) are defined as candidate islands. Island
-coordinates are mapped to genomic space, allowing multi-segment islands across
-splice junctions. Compact single-exon transcripts (exon $\leq 320$\,nt, e.g.\
-RMRP) are not scanned but taken as a single island spanning the whole exon. This
-is an engineering heuristic that avoids unstable decomposition of compact loci;
-it does not assume end-to-end biological conservation.
+For each selected single-exon ncRNA locus, the gene body together with
+150\,nt of flanking sequence on each side was divided into 128-nt windows with
+a stride of 24\,nt. A window was labeled positive when it overlapped the
+annotated ncRNA by at least 20\,nt. Other windows from the same region were
+labeled negative. Additional negative examples were generated by sampling N-free genomic regions
+of comparable length from the primary chromosomes and tiling them using the same
+window and stride.
 
-\textbf{Output.} Reference islands with genomic coordinates and associated scores.
+Each window was embedded with RiNALMo, mean-pooled across positions, and
+projected from 1280 to 64 dimensions using the detection PCA before classifier
+training. Training loci were balanced across biotypes, with up to 150 loci per
+biotype and an additional 71 held-out loci per biotype used for threshold
+calibration. The committed training cache contains 18{,}827 windows:
+6{,}538 positive and 12{,}289 negative. In five-fold cross-validation, the
+classifier achieved ROC-AUC $\approx 0.79$. At a threshold calibrated to a
+background false-positive rate of at most 20\%, it detected approximately 78\%
+of windows overlapping an annotated element by at least 40\,nt.
+
+The detector therefore distinguishes embedding patterns associated with the
+compact ncRNA classes represented in its positive training set from the sampled
+genomic background. Contiguous detector-positive regions are termed
+``islands.'' This is an operational definition: detector positivity does not
+establish stable RNA structure, biological function, or membership in a general
+ncRNA class.
+
+For reference-locus analysis, the concatenated exonic sequence of each union
+exon model is scanned using a 128-nt sliding window with a stride of 40\,nt.
+Windows are embedded, mean-pooled, projected into the detection PCA space, and
+scored by the classifier. The resulting probability trace is smoothed with a
+five-window moving average, and contiguous regions exceeding a fixed probability
+threshold of 0.5 are defined as candidate islands.
+
+Island coordinates are subsequently mapped back to genomic space. An island
+that crosses a splice junction may therefore consist of multiple genomic
+segments. Single-exon loci of length $257$--$320$\,nt are not scanned but are
+represented as a single whole-exon island. This engineering heuristic avoids
+unstable decomposition of compact loci and does not imply end-to-end biological
+conservation.
+
+\textbf{Output.} Reference islands with genomic coordinates and detector scores.
 
 \subsection{Chain-guided projection of islands}
 \label{sec:projisland}
-\textbf{Input.} Reference islands, genome alignment chains, and candidate region
-assignments.
 
-Reference islands are projected through alignment chains to define candidate query
-regions (Figure~\ref{fig:pipeline}A). At most five chains per gene are retained
-(lower chain ID denotes higher alignment score), and chains are loaded with a
-minimum score of 25{,}000. Before projection, each reference island is extended by
-$144$\,nt on each side. Projections exceeding 25 times the flanked reference
-length are rejected. Each accepted query projection is then extended on each side
-by the unflanked island length plus 256\,nt. Projected intervals on the same
-chromosome and strand are merged when they overlap, while retaining links to the
-originating reference islands.
+\textbf{Input.} Reference islands, retained chain--locus assignments, and genome
+alignment chains.
 
-\textbf{Output.} Query regions with mappings to reference islands.
+Reference islands are projected through the chain--locus assignments retained
+during candidate-region prediction
+(Figure~\ref{fig:pipeline}A). In the standard projection mode, only assignments
+classified as ORTH are used. For the three marsupial comparisons
+(\texttt{monDom5}, \texttt{HLdidVir1}, and \texttt{HLnotEug3}), a relaxed
+best-chain mode was used: all ORTH assignments were retained, and for a reference
+locus without an ORTH assignment, the highest-scoring chain was added
+irrespective of its classifier category.
+
+At most five highest-scoring chains per gene are retained, and chains are loaded
+with a minimum score of 25{,}000. Before projection, each reference island is
+extended by 144\,nt on each side. Projections whose span exceeds 25 times the
+length of the flanked reference island are rejected. Each accepted query
+projection is then extended on both sides by the unflanked island length plus
+256\,nt.
+
+Overlapping projected intervals on the same chromosome and strand are merged to
+avoid redundant scanning, while preserving links to all originating reference
+islands.
+
+\textbf{Output.} Query search regions linked to their originating reference
+islands.
 
 \subsection{Local query island evaluation}
 \label{sec:queryisland}
-\textbf{Input.} Merged query regions, query genome, and the classifier from
-Section~\ref{sec:refisland}.
 
-Only regions linked to a transcript with at least one reference island are
-scanned. Regions shorter than 128\,bp or longer than 1.5\,Mb are excluded. For
-regions longer than 2.5\,kb, at least one linked reference transcript must be
-nonzero in length and no more than fourfold shorter than the query region. Each
-retained query region is scanned using the same window, stride, smoothing, and
-probability threshold as reference island detection; contiguous high-scoring
-windows define query islands.
+\textbf{Input.} Merged query search regions, the query genome, and the detector
+described in Section~\ref{sec:refisland}.
 
-\textbf{Output.} Query islands with genomic coordinates and scores.
+Only query regions linked to at least one reference island are evaluated.
+Regions shorter than 128\,bp or longer than 1.5\,Mb are excluded. For regions
+longer than 2.5\,kb, at least one linked reference locus must have a length of at
+least one quarter of the query-region length; this filter removes excessively
+expanded projections.
 
-\subsection{Island alignment in embedding space}
+Each retained query region is scanned using the same window length, stride,
+smoothing procedure, and probability threshold as used for reference-island
+detection. Contiguous detector-positive windows are merged into query islands.
+
+\textbf{Output.} Query islands with genomic coordinates and detector scores.
+
+\subsection{Reference--query island matching}
 \label{sec:islandalign}
-Each island (reference and query) is embedded as a complete sequence, and its
-per-token embeddings are projected to the
-matching PCA space ($1280 \to 16$). For a reference island with per-token matrix
-$A \in \mathbb{R}^{L_r \times 16}$ and a query island $B \in \mathbb{R}^{L_q
-\times 16}$, we L2-normalize the rows and form the per-token cosine similarity
-dotplot $C = \hat{A}\hat{B}^\top$, where $C_{ij}$ is the cosine similarity between
-reference position $i$ and query position $j$.
 
-Nucleotide-indexed local alignment paths are extracted by a Smith--Waterman
-procedure \citep{smithIdentificationCommonMolecular1981} on the score matrix
-$S = C - \tau$, with cosine offset $\tau = 0.5$ and a linear gap penalty of $0.3$.
-From the embedding Smith--Waterman alignment score $s$ (which integrates cosine
-similarity over the aligned band length) we define the embedding-SW distance
-$d = 1/(1 + s)$; lower $d$
-indicates a stronger match. Candidate matches are filtered by minimum island
-length ($\geq 72$\,nt), minimum effective aligned length ($\geq 40$\,nt), and
-match distance ($d \leq 0.1$). Within each projected locus, matches are then
-assigned greedily in order of increasing $d$: each query island is claimed by at
-most one reference island, and each reference island accepts at most two query
-islands (so a reference island with a duplicated query copy can retain both, while
-further copies are left unassigned). Exact distance ties retain the deterministic
-reference-index, query-index order used to enumerate candidate pairs. A
-collinearity constraint retains a maximum-cardinality non-decreasing sequence of
-query-island indices on the same strand, or a non-increasing sequence on opposite
-strands; within a reference island, matched subregions must also be non-decreasing
-in reference position. Assignment is performed
-independently per locus rather than globally, and the retained matches with their
-distances $d$ are reported.
+\subsubsection{Embedding-based local alignment}
 
-Because $s$ accumulates cosine similarity along the alignment path,
-$d = 1/(1+s)$ decreases with the aligned length as well as with per-position
-similarity: a long alignment of moderate mean cosine can attain a smaller $d$ than
-a short alignment of high mean cosine. The reported distance therefore combines
-match length and match quality, which should be kept in mind when thresholding
-($d \leq 0.1$), ranking, greedy assignment, and comparing $d$ across RNA classes or
-across species of differing divergence (Figure~\ref{fig:cores}C). We report $d$ as
-an empirical, length-dependent match score rather than a length-normalized
-similarity, and additionally record the effective aligned length for each match.
-Across the panel, $d$ is moderately anticorrelated with effective aligned length
-(Spearman $\rho \approx -0.64$; median matched length ${\approx}150$\,nt), and
-median $d$ is lower for longer alignments (${\approx}0.03$) than for shorter ones
-(${\approx}0.06$), confirming that the score conflates length and per-position
-similarity; we therefore treat $d$ as a within-locus ranking statistic rather than
-a calibrated cross-locus similarity, and do not length-normalize.
+Each reference and query island is embedded as a complete sequence, and its
+per-token embeddings are projected from 1280 to 16 dimensions using the matching
+PCA. For a reference island with per-token matrix
+$A \in \mathbb{R}^{L_r \times 16}$ and a query island with matrix
+$B \in \mathbb{R}^{L_q \times 16}$, rows are L2-normalized and used to construct
+the per-token cosine-similarity matrix
+\[
+    C = \hat{A}\hat{B}^{\top},
+\]
+where $C_{ij}$ is the cosine similarity between reference position $i$ and query
+position $j$.
 
-In the Rfam-derived matcher benchmark
-(\texttt{notebooks/matching\_benchmark.ipynb}), positives were pairs sharing a
-curated Rfam seed-family core embedded in unrelated genomic flanks, whereas
-negatives contained different-family cores. The embedding-SW alignment score
-separated these planted match and non-match pairs with AUC $0.993$ and
-localized the planted core in all 140 positive pairs. This is a matcher sanity
-check under controlled flanks, not an estimate of genome-wide annotation accuracy.
+Local alignment paths are extracted with a Smith--Waterman procedure
+\citep{smithIdentificationCommonMolecular1981} applied to the score matrix
+$S = C - \tau$, with cosine offset $\tau = 0.5$ and a linear gap penalty of
+$0.3$. Let $s$ denote the resulting embedding Smith--Waterman score. Match
+strength is reported as
+\[
+    d = \frac{1}{1+s},
+\]
+where lower values indicate stronger matches.
 
-We additionally evaluated matched islands in the human--cow (hg38--bosTau9) and
-human--mouse (hg38--mm39) comparisons using two null analyses. First, 250 matched
-island pairs per comparison were sampled at evenly spaced ranks from the complete
-match table. After embedding each reference island, its assigned query island in
-both orientations, and a dinucleotide-preserving shuffle of that query sequence,
-we applied the same cosine-dotplot Smith--Waterman scorer used by the pipeline.
-We ranked the assigned query among all 250 query islands, calculated an AUC for
-assigned versus cross-locus pairs, and compared assigned-pair distances with the
-shuffle control. Second, for 400 matched islands per comparison, we tiled
-same-length windows across the projected query locus at a stride of half the
-assigned-island length (minimum 25\,nt), retaining at most 100 evenly spaced
-windows and always including the assigned interval. Windows whose midpoints lay
-within one assigned-island length were excluded as overlapping alternatives.
-For loci with at least one remaining alternative, we recorded whether the
-assigned interval outscored every alternative; its locus-specific chance
-probability under exchangeability is $1/(k+1)$ for $k$ alternatives. These
-analyses test cross-locus specificity, sensitivity to local nucleotide
-composition, and within-locus positional specificity; they do not establish
-biological function.
+Candidate matches are required to satisfy a minimum island length of 72\,nt, a
+minimum effective aligned length of 40\,nt, and a distance threshold of
+$d \leq 0.1$.
 
-In a separate sequence-baseline analysis, we tested whether embedding similarity
-was fully reducible to conventional nucleotide similarity by evaluating the short
-and island branches separately
-against the same panel of sequence-derived metrics: normalized Levenshtein
-identity, normalized affine-gap nucleotide-SW score, aligned-region
-identity, 3-mer and 4-mer cosine similarity, dinucleotide-composition distance,
-length ratio, and GC-content difference. For 2{,}994 human--mouse short-ncRNA
-predictions, we compared gene-grouped, five-fold cross-validated logistic models
-for any-exon annotation support, using either the sequence metrics alone or the
-same metrics plus MMD. For island matching, 200 CURIA-assigned partners were
-sampled separately from the human--mouse and human--cow comparisons and contrasted
-with cross-locus alternatives; models were evaluated with reference-island-grouped
-cross-validation and cluster-bootstrap confidence intervals. A prespecified
-low-sequence-similarity subset comprised the lowest quartile of normalized
-nucleotide-SW among assigned pairs. Within each syntenic locus, we
-also compared the rank of the CURIA-assigned partner with same-length tiled
-alternatives. All island AUC calculations used freshly recomputed embedding-SW
-scores for both assigned and alternative pairs; the stored match table is
-threshold-selected at $d \leq 0.1$ and therefore has a restricted score range.
+\subsubsection{Match assignment and collinearity}
+
+Within each projected locus, candidate pairs are considered in order of
+increasing $d$. Each query island may be assigned to at most one reference
+island, whereas each reference island may retain at most two query islands,
+allowing a possible duplicated query copy while excluding further assignments.
+
+After score-based assignment, matches are filtered for collinearity. For
+same-strand projections, query-island indices must be non-decreasing as
+reference-island indices increase; for opposite-strand projections, they must be
+non-increasing. The maximum-cardinality collinear subset is retained. When one
+reference island retains two query islands, the pairs are ordered by query-island
+index and their Smith--Waterman traceback start positions within the reference
+island are required to be non-decreasing.
+Assignment and collinearity filtering are performed independently for each locus.
+
+\textbf{Output.} Scored reference--query subregion correspondences, together with
+their effective aligned lengths and genomic coordinates.
+
+\subsubsection{Interpretation of the embedding-SW score}
+
+Because the Smith--Waterman score accumulates cosine similarity along the
+alignment path, the derived distance $d = 1/(1+s)$ depends on both aligned length
+and per-position similarity. A longer alignment with moderate average similarity
+may therefore obtain a lower distance than a shorter alignment with higher
+average similarity. We consequently interpret $d$ as an empirical,
+length-dependent ranking score rather than as a calibrated or length-normalized
+measure of similarity. Effective aligned length is recorded separately for each
+match.
+
+\subsubsection{Controlled matcher benchmark}
+
+To evaluate the local matcher under controlled conditions, we constructed an
+Rfam-derived benchmark
+(\texttt{notebooks/matching\_benchmark.ipynb}). Positive pairs shared a curated
+Rfam seed-family core embedded in unrelated genomic flanks, whereas negative
+pairs contained cores from different families. We evaluated both discrimination
+between positive and negative pairs and localization of the planted homologous
+core. Numerical benchmark results are reported in the Results section.
+
+\subsubsection{Cross-locus and within-locus null analyses}
+
+Matched islands from the human--cow (\texttt{hg38--bosTau9}) and human--mouse
+(\texttt{hg38--mm39}) comparisons were evaluated using two complementary null
+analyses.
+
+First, 250 matched island pairs were sampled at evenly spaced ranks from each
+complete match table. For each reference island, we recomputed embedding-SW
+distances to its assigned query partner, to a dinucleotide-preserving shuffle of
+that partner, and to the sampled query islands from other loci. The assigned
+partner was then ranked against the cross-locus candidate pool, and
+assigned-versus-cross-locus discrimination was summarized by ROC-AUC. Assigned
+pairs were also compared directly with their shuffled controls. For this null
+analysis, both query-sequence orientations were evaluated and the better score
+was retained. The production workflow instead extracts each query island in the
+strand orientation implied by the chain projection and evaluates that orientation
+only.
+
+Second, 400 matched islands were sampled from each comparison for a within-locus
+positional analysis. Same-length windows were tiled across the projected query
+locus using a stride equal to half the assigned-island length, with a minimum
+stride of 25\,nt. At most 100 evenly spaced windows were retained, and the
+assigned interval was always included. Windows whose midpoints lay within one
+assigned-island length of the assigned interval were excluded as overlapping
+alternatives. For loci with at least one remaining alternative, we recorded
+whether the assigned interval outscored all alternatives. For $k$ alternatives,
+the corresponding locus-specific chance probability under exchangeability is
+$1/(k+1)$.
+
+These analyses evaluate cross-locus specificity, robustness to local nucleotide
+composition, and within-locus positional specificity. They do not establish
+biological function or evolutionary orthology.
+
+\subsection{Sequence-baseline and score-reducibility analyses}
+\label{sec:sequence-baselines}
+
+We tested whether embedding-based similarity was fully reducible to conventional
+nucleotide similarity by evaluating the compact-locus and localized-subregion
+workflows separately against the same panel of sequence-derived metrics:
+normalized Levenshtein identity, normalized affine-gap nucleotide
+Smith--Waterman score, aligned-region identity, 3-mer and 4-mer cosine
+similarity, dinucleotide-composition distance, length ratio, and GC-content
+difference.
+
+For 2{,}994 human--mouse compact-locus predictions, we compared gene-grouped,
+five-fold cross-validated logistic regression models for any-exon annotation
+support. One model used only the sequence-derived metrics, whereas the second
+used the same metrics together with MMD.
+
+For localized-subregion matching, 200 \curia{}-assigned partners were sampled
+separately from the human--mouse and human--cow comparisons and contrasted with
+cross-locus alternatives. Models were evaluated using
+reference-island-grouped cross-validation and cluster-bootstrap confidence
+intervals. A prespecified low-sequence-similarity subset consisted of assigned
+pairs in the lowest quartile of normalized nucleotide Smith--Waterman score.
+
+Within each syntenic locus, we additionally compared the rank of the
+\curia{}-assigned partner with same-length tiled alternatives. All island-level
+AUC calculations used freshly recomputed embedding-SW scores for both assigned
+and alternative pairs. The stored match table was not used directly for these
+calculations because it had already been threshold-selected at $d \leq 0.1$ and
+therefore contained a restricted score range.
 
 \begin{figure}[t]
   \centering
@@ -405,120 +501,140 @@ threshold-selected at $d \leq 0.1$ and therefore has a restricted score range.
 
 \subsection{Evaluation metrics}
 \label{sec:eval}
-Evaluation is based on agreement with existing annotations and serves as an
-approximate proxy for ground truth. Due to incomplete and heterogeneous ncRNA
-annotation across species, these metrics should be interpreted as measures of
-annotation agreement rather than direct estimates of biological accuracy.
+
+Evaluation is based on agreement with existing annotations and is used as an
+approximate proxy for ground truth. Because ncRNA annotations are incomplete and
+heterogeneous across species, the reported metrics should be interpreted as
+measures of annotation agreement rather than direct estimates of biological
+accuracy.
 
 \subsubsection{Short ncRNA evaluation}
+
 For short ncRNAs, evaluation is performed at the locus level against annotated
-transcripts using three explicitly distinguished criteria:
+transcripts using three distinct criteria:
 \begin{itemize}
-  \item \emph{any-overlap rate}: the fraction of predictions intersecting an
-        annotated ncRNA exon by at least $1$\,nt;
-  \item \emph{$50\%$ prediction-coverage recovery}: the fraction for which the
-        maximum exonic intersection with an annotated transcript, divided by the
-        predicted-locus length, is at least $50\%$;
-  \item \emph{near-complete boundary recovery}: the fraction satisfying a
-        same one-directional prediction-coverage criterion at $99\%$.
+    \item \emph{any-overlap rate}: the fraction of predictions intersecting an
+    annotated ncRNA exon by at least $1$\,nt;
+    \item \emph{$50\%$ prediction coverage}: the fraction for which the maximum
+    exonic intersection with an annotated transcript, divided by the
+    predicted-locus length, is at least $50\%$;
+    \item \emph{near-complete prediction coverage}: the fraction satisfying the
+    same one-directional criterion at $99\%$.
 \end{itemize}
-These labels are used consistently throughout; the ambiguous term ``annotation
-agreement'' is avoided for the three distinct quantities.
 
-We separately report workflow coverage from the full reference denominator:
-the number of non-protein-coding union loci satisfying the short-branch geometry,
-the number assigned at least one chain-projected query candidate, and the number
-producing a refined prediction. This is a processing-yield denominator, not a
-biological recall estimate. A recall denominator would require a linked set of
-eligible human loci with established mouse orthologs; query-side interval overlap
-alone does not establish that relationship.
-As a conservative proxy, we also define a \emph{named-counterpart} set: eligible
-human loci whose gene name occurs exactly, ignoring case, in the mouse GENCODE
-annotation. Recovery requires a final prediction to overlap an exon of that
-same-name mouse gene. This criterion favors established, consistently named RNA
-families and is not a general genome-wide recall estimate.
+We separately report workflow coverage across the full set of eligible reference
+loci: the number of non-protein-coding union loci satisfying the short-branch
+geometry, the number assigned at least one chain-projected query candidate, and
+the number producing a refined prediction. These counts describe processing
+yield rather than biological recall. Estimating recall would require a linked
+set of eligible human loci with established mouse counterparts; query-side
+interval overlap alone does not establish such a relationship.
 
-\subsubsection{lncRNA locus-level evaluation}
-For lncRNAs, evaluation is performed at the locus level with relaxed criteria due
-to boundary ambiguity. A predicted locus is considered supported if it overlaps
-any annotated exon of an ncRNA gene. We report the fraction of loci overlapping
-annotated exons and the distribution of overlap proportions across predictions.
+As a conservative proxy, we also define a \emph{named-counterpart} set consisting
+of eligible human loci whose gene name occurs exactly, ignoring case, in the
+mouse GENCODE annotation. A locus is counted as recovered when its final
+prediction overlaps an exon of the same-named mouse gene. This criterion is
+enriched for established, consistently named RNA families and should not be
+interpreted as a general genome-wide recall estimate.
 
-\subsubsection{Island-level evaluation}
-For island-branch loci, evaluation is extended to localized subregions (``islands''). A
-matched island is considered supported if it overlaps any annotated ncRNA exon in
-the query genome. We report the fraction of matched islands overlapping annotated
-regions, the number of matched islands per locus, and cross-species consistency of
-island matches.
+\subsubsection{Evaluation of localized-subregion predictions}
 
-\subsubsection{Annotation agreement versus confidence}
-To assess the relationship between embedding-based similarity and annotation
-support, we analyze annotation agreement as a function of the match score.
-Predictions are stratified by score and we report the fraction overlapping
-annotations across bins and the score distributions for overlapping and
-non-overlapping predictions. This provides an empirical characterization of the
-score as a measure of correspondence confidence, rather than relying on predefined
-thresholds.
+For loci processed by the localized-subregion workflow, evaluation is performed
+at both the locus and subregion levels. A reference locus is considered supported
+when at least one predicted query subregion overlaps an annotated ncRNA exon. At
+the subregion level, a matched island is considered supported when it overlaps an
+annotated ncRNA exon in the query genome.
 
-\subsubsection{Limitations}
+We report the fraction of supported loci, the fraction of matched islands
+overlapping annotated exons, the distribution of exonic overlap proportions, and
+the number of matched islands per locus. For multi-species analyses, recurrence
+is summarized by the number of query genomes in which a reference subregion has
+an accepted match.
+
+To examine the relationship between embedding-based match strength and annotation
+support, predictions are stratified by score. We report annotation-overlap rates
+across score bins and compare score distributions between overlapping and
+non-overlapping predictions. Because the scores are not globally calibrated,
+these analyses characterize an empirical association with annotation support
+rather than a formal measure of prediction confidence.
+
 Predictions outside annotated regions may represent either false positives or
-unannotated ncRNAs
-\citep{hezroniPrinciplesLongNoncoding2015,mattickLongNoncodingRNAs2023,perteaCHESSNewHuman2018}.
+currently unannotated ncRNAs
+\citep{hezroniPrinciplesLongNoncoding2015,
+    mattickLongNoncodingRNAs2023,
+    perteaCHESSNewHuman2018}.
 Annotation completeness varies across species, and ncRNA boundaries are often
-imprecise. In contrast to protein-coding ORFs, many ncRNAs have no comparably
-sharp, independently verifiable functional boundary. Accordingly, overlap-based
-performance is a conservative proxy rather than a precise boundary benchmark.
+imprecise. Unlike protein-coding ORFs, many ncRNAs lack sharply defined,
+independently verifiable functional boundaries. Overlap-based evaluation should
+therefore be interpreted as an annotation-agreement measure rather than as a
+precise benchmark of biological accuracy or boundary recovery.
 
 \subsection{Recurrent-core aggregation and coding proximity}
-Reference islands from different species runs are assigned to the same core when
-their human reference intervals overlap within the same gene; the best-distance
-match per core and query species is retained. A species contributes to a core when
-it contains an accepted island match; accepted rows already satisfy the pipeline
-threshold of embedding-SW distance $d\leq0.10$. The broad recurrent set requires
-an accepted match in at least 17 of 19 query species and mean reference-island
-length of at least 120\,bp. Because every retained per-species row is individually
-bounded by $d\leq0.10$, applying the same cutoff to the cross-species mean adds
-little further discrimination. In the strict-quorum sensitivity analysis, we
-instead counted species whose individual best match satisfied $d\leq0.05$, $0.04$,
-$0.03$, $0.02$, or $0.01$ while fixing the recurrence requirement at 17 species;
-we also varied the species quorum at $d\leq0.02$. Human lncRNA gene spans are then
-compared with protein-coding gene spans. Direct overlaps are classified by strand
-as sense, antisense, or both; non-overlapping loci within 5\,kb are classified as
-near coding; all remaining loci are classified as intergenic. This is a
-coding-proximity description of annotated human lncRNA loci, not a test of
-transcription or function.
+
+Reference islands obtained from different species comparisons are assigned to the
+same recurrent core when their human reference intervals overlap within the same
+gene. For each core and query species, only the accepted match with the lowest
+embedding-SW distance is retained.
+
+A query species is counted as supporting a core when it contains an accepted
+island match. Because accepted matches already satisfy the pipeline threshold
+$d \leq 0.10$, the broad recurrent set is defined by support in at least 17 of
+19 query species and by a mean reference-island length of at least 120\,bp. This
+length is calculated across the retained species-specific human reference-island
+intervals contributing to the core, with at most one interval per query species;
+it is distinct from the total span of the aggregated core.
+
+For sensitivity analyses, recurrence was recalculated using stricter
+per-species distance thresholds of $d \leq 0.05$, $0.04$, $0.03$, $0.02$, and
+$0.01$, while fixing the required species count at 17. We also varied the species
+quorum while fixing the per-species threshold at $d \leq 0.02$.
+
+To characterize coding proximity, human lncRNA gene spans were compared with
+protein-coding gene spans. Direct overlaps were classified by strand as sense,
+antisense, or both. Non-overlapping lncRNA loci within 5\,kb of a protein-coding
+gene were classified as near coding, and all remaining loci as intergenic. These
+categories describe genomic proximity only and do not imply transcriptional or
+functional relationships.
 
 \subsection{Exploratory ViennaRNA structure comparison}
+
 The exact human--mouse intervals for the three short-ncRNA examples in
 Figure~\ref{fig:cases} and the accepted MALAT1 recurrent-core matches R5, R4, R3,
 and R2 were analyzed with ViennaRNA 2.7.2
 \citep{lorenzViennaRNAPackage2011}. The similar-length short-ncRNA intervals were
-folded whole. For each MALAT1 core, length-matched windows were defined
-from the aligned span and expanded symmetrically by 20 or 40\,nt. Global
-partition-function folding and RNAplfold were applied, and the human and mouse
-sequences were aligned by affine-gap nucleotide Smith--Waterman. Both base-pair
-probability matrices were mapped into the shared alignment coordinates and
-compared using column-exact weighted Jaccard and a $\pm2$-column tolerance-aware
-weighted overlap with one-to-one matching. These structural-overlap metrics are
-exploratory descriptive measures, not validated structure-similarity scores. Full
-per-window and per-method results are provided in Supplementary Figures S1--S7,
-Supplementary Table S1, and the source TSVs.
+folded as complete sequences. For each MALAT1 core, length-matched windows were
+defined from the aligned span and expanded symmetrically by 20 or 40\,nt.
+
+Global partition-function folding and RNAplfold were applied. Human and mouse
+sequences were aligned using affine-gap nucleotide Smith--Waterman, and the
+resulting alignment was used to place both base-pair probability matrices in a
+shared coordinate system. Structural agreement was then summarized using a
+column-exact weighted Jaccard score and a $\pm2$-column tolerance-aware weighted
+overlap with one-to-one matching.
+
+These metrics are exploratory descriptive measures and have not been validated as
+general structure-similarity scores. Full per-window and per-method results are
+provided in Supplementary Figures S1--S7, Supplementary Table S1, and the source
+TSV files.
 
 \subsection{Implementation details}
 \label{sec:impl}
-Embeddings are computed with RiNALMo and projected using the two task-specific PCA
-transformations described in Section~\ref{sec:embeddings} ($1280 \to 16$ for
-matching and $1280 \to 64$ for island finding). Short ncRNA
-loci are embedded per-window, whereas complete island embeddings supply the
-per-token matrices used by the local matcher.
 
-Embedding inference is performed on GPU using batched execution, whereas
-downstream MMD computation, cosine alignment, and filtering are performed on CPU. Internally, \curia{} is organized as a staged task
-pipeline that separates embedding inference from downstream analysis: sequence
-windows are processed by a shared GPU worker using micro-batching, while
-subsequent matching and filtering steps operate on persisted intermediate results.
-This design improves hardware utilization, supports incremental execution, and
-allows reference-side preprocessing to be reused across query genomes. Attention
-uses PyTorch's memory-efficient scaled-dot-product attention. Outputs are reported
-in standard tabular and BED formats. The use of fixed embedding models and PCA
-projections ensures consistent representations across runs.
+Embeddings are computed with RiNALMo and projected using the two task-specific PCA
+transformations described in Section~\ref{sec:embeddings}: $1280 \to 16$ for
+position-level matching and $1280 \to 64$ for localized-subregion detection.
+Compact-locus sequences are embedded separately for each candidate window,
+whereas complete reference and query islands are embedded to obtain the per-token
+matrices used by the local matcher.
+
+Embedding inference is performed on GPU using batched execution. MMD computation,
+cosine-similarity alignment, match assignment, and downstream filtering are
+performed on CPU. \curia{} is implemented as a staged task pipeline that separates
+embedding inference from subsequent analysis. Sequence windows are processed by a
+shared GPU worker using micro-batching, and intermediate representations are
+persisted for reuse by later stages and across query-genome runs.
+
+RiNALMo inference uses PyTorch memory-efficient scaled-dot-product attention.
+Pipeline outputs are written in tabular and BED formats. Embedding-model versions,
+PCA transformations, detector parameters, and matching thresholds are stored as
+versioned pipeline artifacts.
