@@ -194,6 +194,22 @@ See [OUTPUT_STRUCTURE.md](OUTPUT_STRUCTURE.md) for detailed file descriptions.
 
 ---
 
+## Visualization
+
+For manual inspection and quality control, we recommend loading the following
+tracks into the UCSC Genome Browser for each `hg38_vs_<species>/` result:
+
+- `query_annotation/aligned_query_islands_human_readable.bed` —
+  aligned lncRNA islands.
+
+- `query_annotation/short_ncRNA.bed` —
+  accepted short ncRNA predictions.
+
+These tracks are intended to be viewed together with UCSC chain-alignment tracks
+and GENCODE gene annotations.
+
+--
+
 ## Validation
 
 CURIA was evaluated across 19 human-to-query mammalian genome comparisons, with
