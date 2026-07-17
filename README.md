@@ -14,16 +14,6 @@ It supports:
 For methodological details, validation, and limitations, see the published preprint:
 [Kirilenko (2026), Research Square](https://doi.org/10.21203/rs.3.rs-10374295/v1).
 
-## Status
-
-Research prototype. The accompanying preprint is available on Research Square:
-https://doi.org/10.21203/rs.3.rs-10374295/v1
-
-The exact per-species result snapshot used for the manuscript is archived on
-Zenodo:
-
-https://doi.org/10.5281/zenodo.21383175
-
 ## Installation
 
 The quickest path is the bundled installer, which sets up the environment (via
