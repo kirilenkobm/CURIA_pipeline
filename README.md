@@ -11,12 +11,16 @@ It supports:
 - long ncRNA analysis through localized embedding-positive subregions (“islands”)
 - genome-scale analysis by restricting searches to chain-supported candidate loci
 
-For methodological details, validation, and limitations, see the accompanying preprint.
+For methodological details, validation, and limitations, see the published preprint:
+[Kirilenko (2026), Research Square](https://doi.org/10.21203/rs.3.rs-10374295/v1).
 
 ## Status
 
-Research prototype. A preprint is in preparation. The exact per-species result
-snapshot used for the manuscript is archived on Zenodo:
+Research prototype. The accompanying preprint is available on Research Square:
+https://doi.org/10.21203/rs.3.rs-10374295/v1
+
+The exact per-species result snapshot used for the manuscript is archived on
+Zenodo:
 
 https://doi.org/10.5281/zenodo.21383175
 
@@ -224,15 +228,25 @@ accompanying manuscript.
 
 ## Citation
 
-A preprint describing CURIA is in preparation. Until it is available, please cite
-the archived result dataset:
+If you use CURIA in your research, please cite:
 
-> Kirilenko, Bogdan M. (2026). *CURIA cross-species ncRNA correspondence
-> predictions across 19 mammalian genomes* (Version 1.0) [Data set]. Zenodo.
+> Kirilenko, B. M. (2026). *Cross-species ncRNA annotation using synteny-constrained embedding similarity*. Research Square.  
+> https://doi.org/10.21203/rs.3.rs-10374295/v1
+
+```bibtex
+@article{kirilenko2026curia,
+  author  = {Kirilenko, Bogdan M.},
+  title   = {Cross-species ncRNA annotation using synteny-constrained embedding similarity},
+  year    = {2026},
+  journal = {Research Square},
+  doi     = {10.21203/rs.3.rs-10374295/v1}
+}
+```
+
+The result snapshot used in the manuscript is archived separately on Zenodo:
+
+> Kirilenko, B. M. (2026). CURIA cross-species ncRNA correspondence predictions across 19 mammalian genomes (Version 1.0) [Data set]. Zenodo.
 > https://doi.org/10.5281/zenodo.21383175
-
-The manuscript citation and BibTeX entry will be added here after the preprint is
-published.
 
 ---
 
